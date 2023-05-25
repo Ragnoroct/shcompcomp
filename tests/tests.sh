@@ -2,14 +2,19 @@
 
 # https://stackoverflow.com/a/9505024/2276637
 script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
-test_case="$*"
+proj_dir="$(realpath "$script_dir/..")"
+curr_dir="$PWD"
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
+
+cd "$proj_dir" || exit
 source "/usr/share/bash-completion/bash_completion"
-# shellcheck source=/home/willy/.dotfiles/bashcompletils/bashcompletils-lib.sh
-source "$script_dir/../bashcompletils-lib.sh" || { echo -e "${RED}ERROR: sourcing bashcompletils-lib.sh failed$NC"; exit 1; }
+source "./bctils-lib.sh" || { echo -e "${RED}ERROR: sourcing bctils-lib.sh failed$NC"; exit 1; }
+cd "$curr_dir" || exit
+
+test_case="$*"
 export BCTILS_COMPILE_DIR="$script_dir/../compile"
 
 # todo: run test suites in parallel but still print in queued order
@@ -29,58 +34,59 @@ run_tests () {
     time_start=$(($(date +%s%N)/1000000))
 
     current_suite "simple"
-    bctils_v2_cli_register      "examplecli"
-    bctils_v2_cli_add_argument  "examplecli" "-h"
-    bctils_v2_cli_add_argument  "examplecli" "--help"
-    bctils_v2_cli_compile       "examplecli" --source
-    expect_complete_compreply   "examplecli " "-h --help"
-
-    bctils_v2_cli_register "examplecli"
-    bctils_v2_cli_add_argument "examplecli" "-h"
-    bctils_v2_cli_compile "examplecli" "/tmp/bctils_complete_test.sh"
-    expect_cmd "compile to target file" test -f "/tmp/bctils_complete_test.sh" 
-    
-    current_suite "positionals with choices"
-    bctils_v2_cli_register      "examplecli2"
-    bctils_v2_cli_add_argument  "examplecli2" --choices="c1 c2 c3"
-    bctils_v2_cli_add_argument  "examplecli2" --choices="c4 c5 c6"
-    bctils_v2_cli_compile       "examplecli2" --source
-    expect_complete_compreply   "examplecli2 " "c1 c2 c3"
-    expect_complete_compreply   "examplecli2 c" "c1 c2 c3"
-    expect_complete_compreply   "examplecli2 d" ""
-    expect_complete_compreply   "examplecli2 c2 " "c4 c5 c6"
-    expect_complete_compreply   "examplecli2 c2 d" ""
-
-    current_suite "positionals with choices and optionals"
-    bctils_v2_cli_register      "examplecli3"
-    bctils_v2_cli_add_argument  "examplecli3" --choices="c1 c2 c3"
-    bctils_v2_cli_add_argument  "examplecli3" "-h"
-    bctils_v2_cli_add_argument  "examplecli3" "--help"
-    bctils_v2_cli_compile       "examplecli3" --source
-    expect_complete_compreply   "examplecli3 "          "c1 c2 c3 -h --help"
-    expect_complete_compreply   "examplecli3 c"         "c1 c2 c3"
-    expect_complete_compreply   "examplecli3 -"         "-h --help"
-    expect_complete_compreply   "examplecli3 c3 "       "-h --help"
-    expect_complete_compreply   "examplecli3 --help "   "c1 c2 c3 -h"
-    expect_complete_compreply   "examplecli3 -h "       "c1 c2 c3 --help"
-    
-    current_suite "simple subparsers"
-    bctils_v2_cli_register      "examplecli4"
-    bctils_v2_cli_add_argument  "examplecli4" "-h"
-    bctils_v2_cli_add_argument  "examplecli4" "--help"
-    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" --choices="c1 c2 c3"
-    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" "--help"
-    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" "--print"
-    bctils_v2_cli_compile       "examplecli4" --source
-    expect_complete_compreply   "examplecli4 " "-h --help"
-    expect_complete_compreply   "examplecli4 sub-cmd " "c1 c2 c3 --help --print"
-    
-    current_suite "simple options with arguments like --opt val"
-    bctils_v2_cli_register      "examplecli5"
-    bctils_v2_cli_add_argument  "examplecli5" "--key" --choices="val1 val2"
-    bctils_v2_cli_compile       "examplecli5" --source
-    expect_complete_compreply   "examplecli5 " "--key"
-    expect_complete_compreply   "examplecli5 --key " "val1 val2"
+    bctils_cli_register "examplecli"
+    bctils_cli_add "examplecli" opt "-h"
+    bctils_cli_add "examplecli" opt "--help"
+    __bctils_dump "examplecli"
+#    bctils_v2_cli_compile       "examplecli" --source
+#    expect_complete_compreply   "examplecli " "-h --help"
+#
+#    bctils_v2_cli_register "examplecli"
+#    bctils_v2_cli_add_argument "examplecli" "-h"
+#    bctils_v2_cli_compile "examplecli" "/tmp/bctils_complete_test.sh"
+#    expect_cmd "compile to target file" test -f "/tmp/bctils_complete_test.sh"
+#
+#    current_suite "positionals with choices"
+#    bctils_v2_cli_register      "examplecli2"
+#    bctils_v2_cli_add_argument  "examplecli2" --choices="c1 c2 c3"
+#    bctils_v2_cli_add_argument  "examplecli2" --choices="c4 c5 c6"
+#    bctils_v2_cli_compile       "examplecli2" --source
+#    expect_complete_compreply   "examplecli2 " "c1 c2 c3"
+#    expect_complete_compreply   "examplecli2 c" "c1 c2 c3"
+#    expect_complete_compreply   "examplecli2 d" ""
+#    expect_complete_compreply   "examplecli2 c2 " "c4 c5 c6"
+#    expect_complete_compreply   "examplecli2 c2 d" ""
+#
+#    current_suite "positionals with choices and optionals"
+#    bctils_v2_cli_register      "examplecli3"
+#    bctils_v2_cli_add_argument  "examplecli3" --choices="c1 c2 c3"
+#    bctils_v2_cli_add_argument  "examplecli3" "-h"
+#    bctils_v2_cli_add_argument  "examplecli3" "--help"
+#    bctils_v2_cli_compile       "examplecli3" --source
+#    expect_complete_compreply   "examplecli3 "          "c1 c2 c3 -h --help"
+#    expect_complete_compreply   "examplecli3 c"         "c1 c2 c3"
+#    expect_complete_compreply   "examplecli3 -"         "-h --help"
+#    expect_complete_compreply   "examplecli3 c3 "       "-h --help"
+#    expect_complete_compreply   "examplecli3 --help "   "c1 c2 c3 -h"
+#    expect_complete_compreply   "examplecli3 -h "       "c1 c2 c3 --help"
+#
+#    current_suite "simple subparsers"
+#    bctils_v2_cli_register      "examplecli4"
+#    bctils_v2_cli_add_argument  "examplecli4" "-h"
+#    bctils_v2_cli_add_argument  "examplecli4" "--help"
+#    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" --choices="c1 c2 c3"
+#    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" "--help"
+#    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" "--print"
+#    bctils_v2_cli_compile       "examplecli4" --source
+#    expect_complete_compreply   "examplecli4 " "-h --help"
+#    expect_complete_compreply   "examplecli4 sub-cmd " "c1 c2 c3 --help --print"
+#
+#    current_suite "simple options with arguments like --opt val"
+#    bctils_v2_cli_register      "examplecli5"
+#    bctils_v2_cli_add_argument  "examplecli5" "--key" --choices="val1 val2"
+#    bctils_v2_cli_compile       "examplecli5" --source
+#    expect_complete_compreply   "examplecli5 " "--key"
+#    expect_complete_compreply   "examplecli5 --key " "val1 val2"
 
     current_suite "complete option value like --opt=value"
     current_suite "add flag to auto add = if only one arg option left and it requires an argument"
@@ -137,7 +143,7 @@ run_tests () {
     
 
     
-    echo -e "done: $((($(date +%s%N)/1000000)-time_start))ms (${all_result}${fail_count_str})"
+    echo -e "done: $((($(date +%s%N)/1000000)-time_start))ms (${all_result}${fail_count_str}) $(date '+%T.%3N')"
 
     # complete -F bashcompletils_autocomplete "example_cli"
     # expect_complete_compreply "example_cli " "pio channel deploy release streamermap"
@@ -391,16 +397,38 @@ _example_cli_branch_autocomplete () {
   log "COMPREPLY: ${COMPREPLY[*]}"
 }
 
-if [[ "$TEST_RUN_MODE" == "RUN_TESTS" ]]; then
-    run_tests
+if [[ "$TEST_RUN_MODE" == "RUN_TESTS_ONCE" ]]; then
+  run_tests
 else
-    TEST_RUN_MODE="RUN_TESTS" bash "$script_dir/tests.sh"
+  inotify_loop () {
+    local watch_file="$1"
+    local events="$2"
+    local dir_file="$3"
+
+    if [[ ! "$events" =~ .*"CLOSE_WRITE".* ]] || [[ "$dir_file" == "index.lock" || "$dir_file" =~ "~"$ ]]; then
+      return
+    fi
+
+    if [[ -n "$dir_file" ]]; then
+      echo "file change: $dir_file $events"
+    fi
+
+    if [[ "$events" =~ .*"CLOSE_WRITE".* && "$dir_file" == "bctils-lib.go" ]]; then
+      echo "rebuilding golang binary..."
+      just build
+    fi
+
     echo "waiting for changes..."
-    inotifywait -q -m -r -e close_write,create,delete "$script_dir/../" --exclude "$script_dir/../compile/*/**" | \
-    while read -r _directory _action _file; do
-        TEST_RUN_MODE="RUN_TESTS" bash "$script_dir/tests.sh"
-        echo "waiting for changes..."
-    done
+    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh"
+  }
+
+  just build
+  TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh"
+  inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
+  --exclude "$proj_dir/(compile|build)/*/**" | \
+  while read -r watch_file events dir_file; do
+    inotify_loop "$watch_file" "$events" "$dir_file"
+  done
 fi
 
 

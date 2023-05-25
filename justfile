@@ -18,3 +18,10 @@ benchmark:
 
 test:
     ./tests/tests.sh
+
+logs:
+  tail -f ~/mybash.log
+
+@build:
+    mkdir -p "build"
+    go build -o "build/bctils"
