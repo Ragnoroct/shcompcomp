@@ -20,6 +20,16 @@ fi
 test_case="$*"
 export BCTILS_COMPILE_DIR="$script_dir/../compile"
 
+# https://serverfault.com/a/570651
+exec 9>&2
+exec 8> >(
+    while IFS='' read -r line || [ -n "$line" ]; do
+       echo -e "\033[31m${line}\033[0m"
+    done
+)
+function redirect(){ exec 2>&8; }
+redirect
+
 # todo: run test suites in parallel but still print in queued order
 # todo: show SUCCESS OR FAIL if anything fails
 # todo: re-run last failed tests until nothing then everything (maybe bad idea)
@@ -41,11 +51,12 @@ run_tests () {
     bctils_cli_add "examplecli" opt "-h"
     bctils_cli_add "examplecli" opt "--help"
     bctils_cli_compile "examplecli" --source
+    expect_compile_success
     expect_complete_compreply   "examplecli " "-h --help"
 
     rm -rf "/tmp/bctils_complete_test.sh"
     bctils_cli_register "examplecli"
-    bctils_cli_add "examplecli" "-h"
+    bctils_cli_add "examplecli" opt "-h"
     bctils_cli_compile "examplecli" "/tmp/bctils_complete_test.sh"
     expect_cmd "compile to target file" test -f "/tmp/bctils_complete_test.sh"
 
@@ -59,19 +70,33 @@ run_tests () {
     expect_complete_compreply   "examplecli2 d" ""
     expect_complete_compreply   "examplecli2 c2 " "c4 c5 c6"
     expect_complete_compreply   "examplecli2 c2 d" ""
-#
-#    current_suite "positionals with choices and optionals"
-#    bctils_cli_register      "examplecli3"
-#    bctils_cli_add  "examplecli3" --choices="c1 c2 c3"
-#    bctils_cli_add  "examplecli3" "-h"
-#    bctils_cli_add  "examplecli3" "--help"
-#    bctils_cli_compile       "examplecli3" --source
-#    expect_complete_compreply   "examplecli3 "          "c1 c2 c3 -h --help"
-#    expect_complete_compreply   "examplecli3 c"         "c1 c2 c3"
-#    expect_complete_compreply   "examplecli3 -"         "-h --help"
-#    expect_complete_compreply   "examplecli3 c3 "       "-h --help"
-#    expect_complete_compreply   "examplecli3 --help "   "c1 c2 c3 -h"
-#    expect_complete_compreply   "examplecli3 -h "       "c1 c2 c3 --help"
+
+    current_suite "error handling"
+    bctils_cli_register "examplebad"
+    bctils_cli_add      "examplebad" --choices="c1 c2 c3" 2> /dev/null; bctils_err_missing="$bctils_err"
+    bctils_cli_add      "examplebad" invalid --choices="c1 c2 c3" 2> /dev/null; bctils_err_invalid="$bctils_err"
+    bctils_cli_compile  "examplebad" --source 2> /dev/null; bctils_err_compile="$bctils_err"
+    expect_cmd "missing type error : $bctils_err_missing" test "$bctils_err_missing" == "second argument must be type opt or pos"
+    expect_cmd "invalid type error : $bctils_err_invalid" test "$bctils_err_invalid" == "second argument must be type opt or pos"
+    expect_cmd "compile error : $bctils_err_compile" test "$bctils_err_compile" == "cannot compile with errors adding arguments"
+    bctils_cli_register "examplegood"
+    bctils_cli_add      "examplegood" pos --choices="c1 c2 c3" 2> /dev/null; bctils_err_add_none="$bctils_err"
+    bctils_cli_compile  "examplegood" --source 2> /dev/null; bctils_err_compile_none="$bctils_err"
+    expect_cmd "no add error : $bctils_err_compile" test "$bctils_err_add_none" == ""
+    expect_cmd "no compile error : $bctils_err_compile" test "$bctils_err_compile_none" == ""
+
+    current_suite "positionals with choices and optionals"
+    bctils_cli_register "examplecli3"
+    bctils_cli_add      "examplecli3" pos --choices="c1 c2 c3"
+    bctils_cli_add      "examplecli3" opt "-h"
+    bctils_cli_add      "examplecli3" opt "--help"
+    bctils_cli_compile  "examplecli3" --source
+    expect_complete_compreply   "examplecli3 "          "c1 c2 c3 -h --help"
+    expect_complete_compreply   "examplecli3 c"         "c1 c2 c3"
+    expect_complete_compreply   "examplecli3 -"         "-h --help"
+    expect_complete_compreply   "examplecli3 c3 "       "-h --help"
+    expect_complete_compreply   "examplecli3 --help "   "c1 c2 c3 -h"
+    expect_complete_compreply   "examplecli3 -h "       "c1 c2 c3 --help"
 #
 #    current_suite "simple subparsers"
 #    bctils_cli_register      "examplecli4"
@@ -143,8 +168,9 @@ run_tests () {
     current_suite "compiled scripts contain auto-generated comment and license"
     current_suite "project is licensed"
     current_suite "order of options added and argument choices is order shown"
+    current_suite "all error messages match current script name"
 
-    echo -e "done: run=$((($(date +%s%N)/1000000)-time_start))ms compile=${BCTILS_COMPILE_TIME}ms (${all_result}${fail_count_str}) $(date '+%T.%3N')"
+    echo -e "done: run=$((($(date +%s%N)/1000000)-time_start))ms gobuild=${BCTILS_COMPILE_TIME}ms (${all_result}${fail_count_str}) $(date '+%T.%3N')"
 
     # complete -F bashcompletils_autocomplete "example_cli"
     # expect_complete_compreply "example_cli " "pio channel deploy release streamermap"
@@ -291,6 +317,12 @@ run_benchmarks () {
     benchmark_results "benchmark_compile_and_source_1" "" "$time_benchmark_compile_and_source_1" "$iterations"
 }
 
+expect_compile_success () {
+  if [[ -n "$bctils_err" ]]; then
+    fail_test "compile failed : $bctils_err"
+  fi
+}
+
 expect_cmd () {
     local msg="$1"; shift
     local cmd="$1"; shift
@@ -378,7 +410,6 @@ expect_complete_compreply () {
     "$(complete -p "$cmd_name" | sed "s/.*-F \\([^ ]*\\) .*/\\1/")" &> /tmp/bashcompletils.out
     output=$(cat /tmp/bashcompletils.out)
     
-    # todo: diff with vimdiff/diff/git diff -U0 --word-diff --no-index -- foo bar | grep -v ^@@
     actual_reply="${COMPREPLY[*]}"
     if [[ "$actual_reply" != "$expected_reply" ]]; then
         fail_test "$test_name"
@@ -426,7 +457,6 @@ else
         return
       fi
       BCTILS_COMPILE_TIME=$((($(date +%s%N)/1000000)-time_start))
-      echo "BCTILS_COMPILE_TIME: $BCTILS_COMPILE_TIME"
     fi
 
     BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh" || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }

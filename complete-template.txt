@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-log() { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+log_everything () { if [[ "{{.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.log; exec 2>&1; set -x; fi; }
 
 __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   local _options_base_names=({{ range $index, $option := .OptionsBase}}
     "{{$option.ArgName}}"
     {{- end}}
   )
+
+  local -A subparsers=()
 
   {{range $index, $pos := .PositionalsBase}}
   {{- "" -}}
@@ -15,13 +18,6 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   {{end -}}
   )
   {{end \}}
-
-  # {str_options_vars:multiline}}
-  # {str_arg_choices:multiline}}
-  # {options_array_str:multiline}}
-  #local -A subparsers=(
-  #  {str_subparsers_assoc:multiline}}
-  #)
 
   # shellcheck disable=SC2034
   local cword_index previous_word words current_word
@@ -54,10 +50,10 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
     # todo: need a way to ensure subparser match isn't an arg or option value
     if [[ "$i" -le "$cword_index" ]]; then
       subparser_candidate="${current_parser}${word}"
-      if [[ -v "subparsers[$subparser_candidate]" ]]; then
+      if [[ -n "${subparsers[$subparser_candidate]}" ]]; then
         current_parser="$subparser_candidate"
         current_parser_clean="${subparsers[$subparser_candidate]}"
-        carg_index=1 # resets (todo: why 1 intead of 0)
+        carg_index=1 # reset todo: why 1 intead of 0
       fi
     fi
   done
@@ -67,7 +63,6 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   else
     parser="$current_parser"
   fi
-
 
   # local -n options_arr requires bash 4.3
   local -n options_arr="_options_base_names_TODO"

@@ -1,4 +1,7 @@
-log() { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+errmsg () { echo "$@" 1>&2; }
+
+declare -g bctils_err=""
 
 bctils_cli_register () {
   local cli_name="$1"
@@ -7,12 +10,16 @@ bctils_cli_register () {
   log "registering: $cli_name"
   unset "__bctils_data_args_${cli_name_clean}"
   declare -g -a "__bctils_data_args_${cli_name_clean}"
+  unset "__bctils_data_errors_${cli_name_clean}"
+  declare -g -a "__bctils_data_errors_${cli_name_clean}"
 }
 
 bctils_cli_add () {
   local cli_name="$1"
   local cli_name_clean="${cli_name//[^[:alnum:]]/_}"
   local -n bctils_data_args="__bctils_data_args_${cli_name_clean}"
+  local -n bctils_data_errors="__bctils_data_errors_${cli_name_clean}"
+  bctils_err=""
 
   local -a args=("$0")
   local -A options=()
@@ -29,9 +36,20 @@ bctils_cli_add () {
 
   arg_type="${args[2]}"
 
+  case "$arg_type" in
+    "opt") arg_name="${args[3]}" ;;
+    "pos") arg_name="" ;;
+    *)
+      error_str="bctils_cli_add error: second argument must be type opt or pos"
+      errmsg "$error_str"
+      bctils_data_errors+=("$error_str")
+      bctils_err="second argument must be type opt or pos"
+      return 1 ;;
+  esac
+
   if [[ "$arg_type" == "opt" ]]; then
     arg_name="${args[3]}"
-  else
+  elif [ "$arg_type" == "pos" ]; then
     arg_name=""
   fi
 
@@ -48,6 +66,7 @@ bctils_cli_add () {
 bctils_cli_compile () {
   local cli_name="$1"
   local cli_name_clean="${cli_name//[^[:alnum:]]/_}"
+  bctils_err=""
 
   local -A options=()
   local -a args=()
@@ -68,10 +87,23 @@ bctils_cli_compile () {
 
   # shellcheck disable=SC2178
   local -n bctils_data_args="__bctils_data_args_${cli_name_clean}"
+  # shellcheck disable=SC2178
+  local -n bctils_data_errors="__bctils_data_errors_${cli_name_clean}"
+
+  if [[ "${#bctils_data_errors[@]}" -gt 0 ]]; then
+    errmsg "bctils_cli_compile: unable to compile with errors"
+    1>&2 printf "%s %s\n" '-' "${bctils_data_errors[@]}"
+    # shellcheck disable=SC2034
+    bctils_err="cannot compile with errors adding arguments"
+    return
+  fi
+
   test -f "$out_file" && chmod u+w "$out_file"
   if ! printf '%s\n' "${bctils_data_args[@]}" | bctils "$cli_name" > "$out_file"
   then
-    exit
+    # shellcheck disable=SC2034
+    bctils_err="bctils compile failed in binary"
+    return
   fi
   chmod u-w "$out_file"
 
