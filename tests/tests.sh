@@ -14,6 +14,9 @@ source "/usr/share/bash-completion/bash_completion"
 source "./bctils-lib.sh" || { echo -e "${RED}ERROR: sourcing bctils-lib.sh failed$NC"; exit 1; }
 cd "$curr_dir" || exit
 
+if [[ -z "$BCTILS_COMPILE_TIME" ]]; then
+  export BCTILS_COMPILE_TIME=0
+fi
 test_case="$*"
 export BCTILS_COMPILE_DIR="$script_dir/../compile"
 
@@ -140,10 +143,8 @@ run_tests () {
     current_suite "compiled scripts contain auto-generated comment and license"
     current_suite "project is licensed"
     current_suite "order of options added and argument choices is order shown"
-    
 
-    
-    echo -e "done: $((($(date +%s%N)/1000000)-time_start))ms (${all_result}${fail_count_str}) $(date '+%T.%3N')"
+    echo -e "done: run=$((($(date +%s%N)/1000000)-time_start))ms compile=${BCTILS_COMPILE_TIME}ms (${all_result}${fail_count_str}) $(date '+%T.%3N')"
 
     # complete -F bashcompletils_autocomplete "example_cli"
     # expect_complete_compreply "example_cli " "pio channel deploy release streamermap"
@@ -407,7 +408,9 @@ else
     local events="$2"
     local dir_file="$3"
 
-    if [[ ! "$events" =~ .*"CLOSE_WRITE".* ]] || [[ "$dir_file" == "index.lock" || "$dir_file" =~ "~"$ ]]; then
+    BCTILS_COMPILE_TIME=0
+
+    if [[ ! "$events" =~ .*"CLOSE_WRITE".* ]] || [[ "$dir_file" =~ ".lock"~?$ || "$dir_file" =~ "~"$ ]]; then
       return
     fi
 
@@ -417,21 +420,26 @@ else
 
     if [[ "$events" =~ .*"CLOSE_WRITE".* ]] && [[ "$dir_file" == "bctils-lib.go" || "$dir_file" == "complete-template.txt" ]]; then
       echo "rebuilding golang binary..."
+      time_start=$(($(date +%s%N)/1000000))
       if ! just build; then
         echo -e "${RED}ERROR: bctils failed to build${NC}"
         return
       fi
+      BCTILS_COMPILE_TIME=$((($(date +%s%N)/1000000)-time_start))
+      echo "BCTILS_COMPILE_TIME: $BCTILS_COMPILE_TIME"
     fi
 
+    BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh" || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }
     echo "waiting for changes..."
-    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh" || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }
   }
 
+  time_start=$(($(date +%s%N)/1000000))
   if just build; then
     TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh"  || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }
   else
     echo -e "${RED}ERROR: bctils failed to build${NC}"
   fi
+  BCTILS_COMPILE_TIME=$((($(date +%s%N)/1000000)-time_start))
   inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
   --exclude "$proj_dir/((compile|build)/.*|.*\.log)" | \
   while read -r watch_file events dir_file; do
