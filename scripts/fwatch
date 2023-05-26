@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+__watchfile_main () {
+  echo "bob"
+}
+
+__watchfile_complete_files () {
+  log "here"
+  mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$CURRENT_WORD")
+}
+
+# if not being sourced
+(return 0 2>/dev/null) || __watchfile_main

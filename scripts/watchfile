@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-
-__watchfile () {
-  echo "bob"
-}
-
-__watchfile_complete () {
-
-}

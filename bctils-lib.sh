@@ -39,8 +39,9 @@ bctils_cli_add () {
   fi
 
   case "$arg_type" in
-    "opt") part_optname=" \"$1\""; shift ;;
-    "pos") part_optname="" ;;
+    "flg") part_arg_1=" \"$1\""; shift ;;
+    "opt") part_arg_1=" \"$1\""; shift ;;
+    "pos") part_arg_1="" ;;
     *)
       error_str="bctils_cli_add error: second argument must be type opt or pos"
       errmsg "$error_str"
@@ -67,7 +68,7 @@ bctils_cli_add () {
   done
 
   part_argtype="$arg_type"
-  printf -v arg_str '%s' "$part_argtype" "$part_parser" "$part_optname" "${parts_rest[@]}"
+  printf -v arg_str '%s' "$part_argtype" "$part_parser" "$part_arg_1" "${parts_rest[@]}"
   bctils_data_args+=("$arg_str")
 }
 

@@ -93,6 +93,7 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
       "closure")
         local -n positional_closure="_positional_${parser}_${carg_index}_closure"
         COMPREPLY=()
+        declare -g BCTILS_CURRENT_WORD="$current_word"
         "$positional_closure"
         choices_all+=("${COMPREPLY[@]}")
         COMPREPLY=()
