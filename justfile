@@ -1,6 +1,6 @@
 set positional-arguments
 
-watchfile file:
+watchfile file head:
     #!/usr/bin/env bash
 
     if [[ "$2" == "head" ]]; then
@@ -12,7 +12,6 @@ watchfile file:
     terminal_row_count="$(tput lines)"
     if [[ "$head_out" == 1 ]]; then
       clear && bat "$1" --paging=never --color=always | head -n "$terminal_row_count"
-      echo "$head_out"
     else
       clear && bat "$1" --paging=never --color=always
     fi

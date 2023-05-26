@@ -23,12 +23,15 @@ bctils_cli_add () {
 
   local -a args=("$0")
   local -A options=()
+  options[parser]=""
   while true; do
     if [[ -z "$1" ]]; then break; fi
     IFS="=" read -r arg arg_value <<< "$1"; shift
     case "$arg" in
       "--choices")
         options[choices]="$arg_value" ;;
+      "-p")
+        options[parser]="$arg_value" ;;
       "--") break ;;
       *) args+=("$arg") ;;
     esac
@@ -53,13 +56,22 @@ bctils_cli_add () {
     arg_name=""
   fi
 
+  if [[ -n "${options[parser]}" ]]; then
+    part_parser=" -p=\"${options[parser]}\""
+  else
+    part_parser=""
+  fi
+
   if [[ -n "${options[choices]}" ]]; then
     part_choices=" --choices=\"${options[choices]}\""
   else
     part_choices=""
   fi
 
-  printf -v arg_str '%s "%s"%s' "$arg_type" "$arg_name" "$part_choices"
+  part_argtype="$arg_type"
+  part_argname=" \"$arg_name\""
+
+  printf -v arg_str '%s' "$part_argtype" "$part_argname" "$part_parser" "$part_choices"
   bctils_data_args+=("$arg_str")
 }
 

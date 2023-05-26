@@ -97,18 +97,18 @@ run_tests () {
     expect_complete_compreply   "examplecli3 c3 "       "-h --help"
     expect_complete_compreply   "examplecli3 --help "   "c1 c2 c3 -h"
     expect_complete_compreply   "examplecli3 -h "       "c1 c2 c3 --help"
-#
-#    current_suite "simple subparsers"
-#    bctils_cli_register      "examplecli4"
-#    bctils_cli_add  "examplecli4" "-h"
-#    bctils_cli_add  "examplecli4" "--help"
-#    bctils_cli_add  "examplecli4" -p="sub-cmd" --choices="c1 c2 c3"
-#    bctils_cli_add  "examplecli4" -p="sub-cmd" "--help"
-#    bctils_cli_add  "examplecli4" -p="sub-cmd" "--print"
-#    bctils_cli_compile       "examplecli4" --source
-#    expect_complete_compreply   "examplecli4 " "-h --help"
-#    expect_complete_compreply   "examplecli4 sub-cmd " "c1 c2 c3 --help --print"
-#
+
+    current_suite "simple subparsers"
+    bctils_cli_register "examplecli4"
+    bctils_cli_add      "examplecli4" opt "-h"
+    bctils_cli_add      "examplecli4" opt "--help"
+    bctils_cli_add      "examplecli4" pos -p="sub-cmd" --choices="c1 c2 c3"
+    bctils_cli_add      "examplecli4" opt -p="sub-cmd" "--awesome"
+    bctils_cli_add      "examplecli4" opt -p="sub-cmd" "--print"
+    bctils_cli_compile          "examplecli4" --source
+    expect_complete_compreply   "examplecli4 " "-h --help"
+    expect_complete_compreply   "examplecli4 sub-cmd " "c1 c2 c3 --awesome --print"
+
 #    current_suite "simple options with arguments like --opt val"
 #    bctils_cli_register      "examplecli5"
 #    bctils_cli_add  "examplecli5" "--key" --choices="val1 val2"

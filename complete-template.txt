@@ -19,6 +19,26 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   )
   {{end \}}
 
+  # options
+  {{ range $parser, $options := .Options }}
+  local _options_{{index $.ParserNames $parser}}_names=(
+  {{ range $opt := $options }}
+    "{{$opt.ArgName}}"
+  {{end -}}
+  )
+  {{end \}}
+
+  # arguments
+  {{ range $parser, $positionals := .Positionals }}
+  {{ range $arg := $positionals }}
+  local _positionals_{{index $.ParserNames $parser}}_{{$arg.PositionalNumber}}_choices=(
+  {{range .ValueChoices \}}
+    "{{.}}"
+  {{end -}}
+  )
+  {{end}}
+  {{end \}}
+
   # shellcheck disable=SC2034
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word

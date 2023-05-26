@@ -17,7 +17,7 @@ var completeTemplate string
 type Argument struct {
 	argType          string
 	ArgName          string
-	parser           string
+	Parser           string
 	PositionalNumber int
 	ValueChoices     []string
 }
@@ -29,6 +29,9 @@ type templateData struct {
 	CliNameClean    string
 	PositionalsBase []Argument
 	OptionsBase     BaseOptions
+	Positionals     map[string][]Argument
+	Options         map[string][]Argument
+	ParserNames     map[string]string
 }
 
 func main() {
@@ -49,6 +52,9 @@ func main() {
 	data := templateData{
 		OptionsBase:     make([]Argument, 0),
 		PositionalsBase: make([]Argument, 0),
+		Positionals:     make(map[string][]Argument, 0),
+		Options:         make(map[string][]Argument, 0),
+		ParserNames:     make(map[string]string),
 		CliNameClean:    cliNameClean,
 		CliName:         cliName,
 	}
@@ -71,30 +77,55 @@ func main() {
 		arg := Argument{}
 		arg.argType = words[0]
 		arg.ArgName = chompQuotes(words[1])
-		arg.parser = "base" // by default base parser
+		arg.Parser = "base" // by default base Parser
 
-		if arg.parser == "base" && arg.argType == "opt" {
-			data.OptionsBase = append(data.OptionsBase, arg)
-		} else if arg.parser == "base" && arg.argType == "pos" {
-			if _, ok := positionalCounter[arg.parser]; !ok {
-				positionalCounter[arg.parser] = 0
+		for _, word := range words {
+			// --choices
+			if strings.HasPrefix(word, "--choices") && arg.argType == "pos" {
+				choices := chompQuotes(strings.Split(word, "=")[1])
+				arg.ValueChoices = strings.Fields(choices)
 			}
 
-			for _, word := range words {
-				if strings.HasPrefix(word, "--choices") {
-					choices := chompQuotes(strings.Split(word, "=")[1])
-					arg.ValueChoices = strings.Fields(choices)
-				}
+			// -p (Parser)
+			if strings.HasPrefix(word, "-p") {
+				arg.Parser = chompQuotes(strings.Split(word, "=")[1])
+			}
+		}
+
+		if _, ok := data.Positionals[arg.Parser]; !ok {
+			data.Positionals[arg.Parser] = make([]Argument, 0)
+		}
+
+		if _, ok := data.ParserNames[arg.Parser]; !ok {
+			data.ParserNames[arg.Parser] = regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_")
+		}
+
+		if arg.argType == "opt" {
+			// options
+			if arg.Parser == "base" {
+				data.OptionsBase = append(data.OptionsBase, arg)
+			}
+			data.Options[arg.Parser] = append(data.Options[arg.Parser], arg)
+		} else if arg.argType == "pos" {
+			// positionals
+			if _, ok := positionalCounter[arg.Parser]; !ok {
+				positionalCounter[arg.Parser] = 0
 			}
 
-			positionalCounter[arg.parser] = positionalCounter[arg.parser] + 1
-			arg.PositionalNumber = positionalCounter[arg.parser]
-			data.PositionalsBase = append(data.PositionalsBase, arg)
+			positionalCounter[arg.Parser] = positionalCounter[arg.Parser] + 1
+			arg.PositionalNumber = positionalCounter[arg.Parser]
+			data.Positionals[arg.Parser] = append(data.Positionals[arg.Parser], arg)
+
+			if arg.Parser == "base" {
+				data.PositionalsBase = append(data.PositionalsBase, arg)
+			}
 		}
 	}
 	if scanner.Err() != nil {
 		panic(scanner.Err())
 	}
+
+	log.Printf("positionals: %v", data.Positionals)
 
 	// new template feature '\}}' chomps next newline rather than trim all whitespace '-}}'
 	pattern := regexp.MustCompile(`(^|\n)([\t\r ]+)(\{\{.*)\\(}}[\t\r ]*)\n(.*)($|\n)`)
@@ -147,4 +178,13 @@ func chompQuotes(str string) string {
 		str, _ = strings.CutSuffix(str, "\"")
 	}
 	return str
+}
+
+func filter[T any](ss []T, test func(T) bool) (ret []T) {
+	for _, s := range ss {
+		if test(s) {
+			ret = append(ret, s)
+		}
+	}
+	return
 }
