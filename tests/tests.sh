@@ -441,7 +441,7 @@ else
   fi
   BCTILS_COMPILE_TIME=$((($(date +%s%N)/1000000)-time_start))
   inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
-  --exclude "$proj_dir/((compile|build)/.*|.*\.log)" | \
+  --exclude "$proj_dir/((compile|build|.git|.idea)/.*|.*\.log)" | \
   while read -r watch_file events dir_file; do
     inotify_loop "$watch_file" "$events" "$dir_file"
   done
