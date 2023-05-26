@@ -30,10 +30,10 @@ watchfile file head=(""):
     done
 
 benchmark:
-    TEST_BENCHMARK=1 ./tests/tests.sh
+    TEST_BENCHMARK=1 ./tests/bctils-tests.sh
 
 test:
-    ./tests/tests.sh
+    ./bctils-tests.sh
 
 logs:
   tail -f ~/mybash.log

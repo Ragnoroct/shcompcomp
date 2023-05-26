@@ -5,19 +5,29 @@ log_everything () { if [[ "{{.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.
 __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   local -A subparsers={{ BashAssoc .ParserNames 2 }}
 
+  {{- if .Options }}
   # options
   {{- range $parser, $options := .Options }}
   local _options_{{index $.ParserNames $parser}}_names={{ BashArray $options.OptionNames 2 }}
   {{- end }}
+  {{- end }}
 
+  {{- if .Positionals }}
   # arguments
   {{range $parser, $positionals := .Positionals -}}
-  {{- range $arg := $positionals -}}
-  local _positionals_{{index $.ParserNames $parser}}_{{$arg.PositionalNumber}}_choices=
-  {{- BashArray .ValueChoices 2 }}
-  {{end}}
+  {{- range $arg := $positionals.Items -}}
+  {{- if eq $arg.CompleteType "choices" \}}
+  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_type="choices"
+  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_choices={{- BashArray .ValueChoices 2 }}
+  {{- else if eq $arg.CompleteType "closure" \}}
+  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_type="closure"
+  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_closure="{{ $arg.ClosureName }}"
+  {{- end}}
+  {{ end }}
   {{- end \}}
+  {{- end -}}
 
+  {{ "" }}
   # shellcheck disable=SC2034
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
@@ -74,8 +84,20 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
     local choices_all=()
 
     # positionals
-    local -n choices_positionals="_positionals_${parser}_${carg_index}_choices"
-    choices_all+=("${choices_positionals[@]}")
+    local -n positional_complete_type="_positional_${parser}_${carg_index}_type"
+    case "$positional_complete_type" in
+      "choices")
+        local -n positional_choices="_positional_${parser}_${carg_index}_choices"
+        choices_all+=("${positional_choices[@]}")
+        ;;
+      "closure")
+        local -n positional_closure="_positional_${parser}_${carg_index}_closure"
+        COMPREPLY=()
+        "$positional_closure"
+        choices_all+=("${COMPREPLY[@]}")
+        COMPREPLY=()
+        ;;
+    esac
 
     # options
     local -n choices_options="_options_${parser}_names"
@@ -90,4 +112,5 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   fi
 }
 
+# todo: add closure validation when sourcing
 complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} "{{ .CliNameClean }}"

@@ -20,11 +20,18 @@ type Argument struct {
 	Parser           string
 	PositionalNumber int
 	ValueChoices     []string
+	CompleteType     string
+	ClosureName      string
 }
 
 type BaseOptions []Argument
 type OptionList []Argument
-type PositionalList []Argument
+
+type PositionalList struct {
+	Parser      string
+	ParserClean string
+	Items       []Argument
+}
 
 type templateData struct {
 	CliName         string
@@ -78,8 +85,21 @@ func main() {
 
 		arg := Argument{}
 		arg.argType = words[0]
-		arg.ArgName = chompQuotes(words[1])
-		arg.Parser = "base" // by default base Parser
+
+		// -p=parser
+		if strings.HasPrefix(words[1], "-p=") {
+			arg.Parser = chompQuotes(strings.Split(words[1], "=")[1])
+			words = append(words[:1], words[1+1:]...)
+		} else {
+			arg.Parser = "base" // by default base Parser
+		}
+
+		if arg.argType == "opt" {
+			arg.ArgName = chompQuotes(words[1])
+		} else {
+			arg.ArgName = ""
+		}
+		arg.CompleteType = ""
 
 		if arg.argType == "pos" && strings.HasPrefix(arg.ArgName, "-") {
 			panic("invalid pos " + arg.ArgName)
@@ -90,16 +110,22 @@ func main() {
 			if strings.HasPrefix(word, "--choices") && arg.argType == "pos" {
 				choices := chompQuotes(strings.Split(word, "=")[1])
 				arg.ValueChoices = strings.Fields(choices)
+				arg.CompleteType = "choices"
 			}
 
-			// -p (Parser)
-			if strings.HasPrefix(word, "-p") {
-				arg.Parser = chompQuotes(strings.Split(word, "=")[1])
+			// --closure
+			if strings.HasPrefix(word, "--closure") && arg.argType == "pos" {
+				closureName := chompQuotes(strings.Split(word, "=")[1])
+				arg.CompleteType = "closure"
+				arg.ClosureName = closureName
 			}
 		}
 
 		if _, ok := data.Positionals[arg.Parser]; !ok {
-			data.Positionals[arg.Parser] = make([]Argument, 0)
+			data.Positionals[arg.Parser] = PositionalList{
+				Parser:      arg.Parser,
+				ParserClean: regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_"),
+			}
 		}
 
 		if _, ok := data.ParserNames[arg.Parser]; !ok {
@@ -120,7 +146,11 @@ func main() {
 
 			positionalCounter[arg.Parser] = positionalCounter[arg.Parser] + 1
 			arg.PositionalNumber = positionalCounter[arg.Parser]
-			data.Positionals[arg.Parser] = append(data.Positionals[arg.Parser], arg)
+
+			if entry, ok := data.Positionals[arg.Parser]; ok {
+				entry.Items = append(entry.Items, arg)
+				data.Positionals[arg.Parser] = entry
+			}
 
 			if arg.Parser == "base" {
 				data.PositionalsBase = append(data.PositionalsBase, arg)
@@ -131,6 +161,18 @@ func main() {
 		panic(scanner.Err())
 	}
 
+	for k := range data.Options {
+		if len(data.Options[k]) == 0 {
+			delete(data.Options, k)
+		}
+	}
+	for k := range data.Positionals {
+		if len(data.Positionals[k].Items) == 0 {
+			delete(data.Positionals, k)
+		}
+	}
+
+	log.Printf("options: %v", data.Options)
 	log.Printf("positionals: %v", data.Positionals)
 
 	// new template feature '\}}' chomps next newline rather than trim all whitespace '-}}'

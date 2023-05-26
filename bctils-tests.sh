@@ -2,11 +2,12 @@
 
 # https://stackoverflow.com/a/9505024/2276637
 script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
-proj_dir="$(realpath "$script_dir/..")"
+proj_dir="$(realpath "$script_dir")"
 curr_dir="$PWD"
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 cd "$proj_dir" || exit
@@ -18,7 +19,7 @@ if [[ -z "$BCTILS_COMPILE_TIME" ]]; then
   export BCTILS_COMPILE_TIME=0
 fi
 test_case="$*"
-export BCTILS_COMPILE_DIR="$script_dir/../compile"
+export BCTILS_COMPILE_DIR="$proj_dir/compile"
 
 # https://serverfault.com/a/570651
 exec 9>&2
@@ -30,17 +31,13 @@ exec 8> >(
 function redirect(){ exec 2>&8; }
 redirect
 
-# todo: run test suites in parallel but still print in queued order
-# todo: show SUCCESS OR FAIL if anything fails
-# todo: re-run last failed tests until nothing then everything (maybe bad idea)
-# todo: print failures at bottom of script so they are seen (somehow with suite)
 # todo: add line number to pass/fail or just fail
 run_tests () {
     if [[ "$TEST_BENCHMARK" == 1 ]]; then
         run_benchmarks
         return
     fi
-    
+
     all_result="${GREEN}SUCCESS${NC}"
     fail_count_str=""
     fail_count=0
@@ -109,6 +106,15 @@ run_tests () {
     expect_complete_compreply   "examplecli4 " "-h --help"
     expect_complete_compreply   "examplecli4 sub-cmd " "c1 c2 c3 --awesome --print"
 
+    __examplecli5_pos_1_completer () {
+      mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
+    }
+    current_suite "allow closure for positionals"
+    bctils_cli_register "examplecli5"
+    bctils_cli_add      "examplecli5" pos --closure="__examplecli5_pos_1_completer"
+    bctils_cli_compile          "examplecli5" --source
+    expect_complete_compreply   "examplecli5 " "c8 c9 c10"
+
 #    current_suite "simple options with arguments like --opt val"
 #    bctils_cli_register      "examplecli5"
 #    bctils_cli_add  "examplecli5" "--key" --choices="val1 val2"
@@ -170,7 +176,7 @@ run_tests () {
     current_suite "order of options added and argument choices is order shown"
     current_suite "all error messages match current script name"
 
-    echo -e "done: run=$((($(date +%s%N)/1000000)-time_start))ms gobuild=${BCTILS_COMPILE_TIME}ms (${all_result}${fail_count_str}) $(date '+%T.%3N')"
+    echo -e "${MAGENTA}DONE${NC}: run=$((($(date +%s%N)/1000000)-time_start))ms gobuild=${BCTILS_COMPILE_TIME}ms (${all_result}${fail_count_str}) $(date '+%T.%3N')"
 
     # complete -F bashcompletils_autocomplete "example_cli"
     # expect_complete_compreply "example_cli " "pio channel deploy release streamermap"
@@ -459,13 +465,13 @@ else
       BCTILS_COMPILE_TIME=$((($(date +%s%N)/1000000)-time_start))
     fi
 
-    BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh" || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }
+    BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests failed${NC}"; }
     echo "waiting for changes..."
   }
 
   time_start=$(($(date +%s%N)/1000000))
   if just build; then
-    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh"  || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }
+    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/bctils-tests.sh"  || { echo -e "${RED}ERROR: bctils-tests failed${NC}"; }
   else
     echo -e "${RED}ERROR: bctils failed to build${NC}"
   fi

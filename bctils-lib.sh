@@ -3,6 +3,8 @@ errmsg () { echo "$@" 1>&2; }
 
 declare -g bctils_err=""
 
+BCTILS_COMPILE_DIR="${BCTILS_COMPILE_DIR:-"$HOME/.config/bctils"}"
+
 bctils_cli_register () {
   local cli_name="$1"
   local cli_name_clean="${cli_name//[^[:alnum:]]/_}"
@@ -14,34 +16,31 @@ bctils_cli_register () {
   declare -g -a "__bctils_data_errors_${cli_name_clean}"
 }
 
+# $1: cli_name
+# $2: type 'opt'|'pos'
+# $3: option name if 'opt'
 bctils_cli_add () {
-  local cli_name="$1"
+  local cli_name="$1"; shift
+  local arg_type="$1"; shift
   local cli_name_clean="${cli_name//[^[:alnum:]]/_}"
   local -n bctils_data_args="__bctils_data_args_${cli_name_clean}"
   local -n bctils_data_errors="__bctils_data_errors_${cli_name_clean}"
-  bctils_err=""
-
+  local parts_rest=()
   local -a args=("$0")
   local -A options=()
-  options[parser]=""
-  while true; do
-    if [[ -z "$1" ]]; then break; fi
-    IFS="=" read -r arg arg_value <<< "$1"; shift
-    case "$arg" in
-      "--choices")
-        options[choices]="$arg_value" ;;
-      "-p")
-        options[parser]="$arg_value" ;;
-      "--") break ;;
-      *) args+=("$arg") ;;
-    esac
-  done
+  local arg_type
 
-  arg_type="${args[2]}"
+  # allow -p to be before "--option-name"
+  if [[ "$1" =~ ^"-p=" ]]; then
+    IFS="=" read -r arg arg_value <<< "$1"; shift
+    part_parser=" $arg=\"$arg_value\""
+  else
+    part_parser=""
+  fi
 
   case "$arg_type" in
-    "opt") arg_name="${args[3]}" ;;
-    "pos") arg_name="" ;;
+    "opt") part_optname=" \"$1\""; shift ;;
+    "pos") part_optname="" ;;
     *)
       error_str="bctils_cli_add error: second argument must be type opt or pos"
       errmsg "$error_str"
@@ -50,28 +49,25 @@ bctils_cli_add () {
       return 1 ;;
   esac
 
-  if [[ "$arg_type" == "opt" ]]; then
-    arg_name="${args[3]}"
-  elif [ "$arg_type" == "pos" ]; then
-    arg_name=""
-  fi
+  bctils_err=""
 
-  if [[ -n "${options[parser]}" ]]; then
-    part_parser=" -p=\"${options[parser]}\""
-  else
-    part_parser=""
-  fi
-
-  if [[ -n "${options[choices]}" ]]; then
-    part_choices=" --choices=\"${options[choices]}\""
-  else
-    part_choices=""
-  fi
+  while true; do
+    if [[ -z "$1" ]]; then break; fi
+    IFS="=" read -r arg arg_value <<< "$1"; shift
+    case "$arg" in
+      "--choices"|\
+      "--closure"|\
+      "-p")
+        parts_rest+=(" $arg=\"$arg_value\"") ;;
+      "--") break ;;
+      -*)
+        errmsg "error: unknown option $arg ${arg_value}" ;;
+      *) args+=("$arg") ;;
+    esac
+  done
 
   part_argtype="$arg_type"
-  part_argname=" \"$arg_name\""
-
-  printf -v arg_str '%s' "$part_argtype" "$part_argname" "$part_parser" "$part_choices"
+  printf -v arg_str '%s' "$part_argtype" "$part_parser" "$part_optname" "${parts_rest[@]}"
   bctils_data_args+=("$arg_str")
 }
 
@@ -95,7 +91,7 @@ bctils_cli_compile () {
     esac
   done
 
-  out_file="$(realpath "${args[1]:-"$BCTILS_COMPILE_DIR/${cli_name}_complete.sh"}")"
+  out_file="${args[1]:-"$BCTILS_COMPILE_DIR/${cli_name}_complete.sh"}"
 
   # shellcheck disable=SC2178
   local -n bctils_data_args="__bctils_data_args_${cli_name_clean}"
@@ -110,14 +106,13 @@ bctils_cli_compile () {
     return
   fi
 
-  test -f "$out_file" && chmod u+w "$out_file"
+  mkdir -p "$(dirname "$out_file")"
   if ! printf '%s\n' "${bctils_data_args[@]}" | bctils "$cli_name" > "$out_file"
   then
     # shellcheck disable=SC2034
     bctils_err="bctils compile failed in binary"
     return
   fi
-  chmod u-w "$out_file"
 
   if [[ "${options["source"]}" == 1 ]]; then
     log "sourcing $out_file"
