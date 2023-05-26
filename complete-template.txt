@@ -3,41 +3,20 @@ log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
 log_everything () { if [[ "{{.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.log; exec 2>&1; set -x; fi; }
 
 __bctils_v2_autocomplete_{{ .CliNameClean }} () {
-  local _options_base_names=({{ range $index, $option := .OptionsBase}}
-    "{{$option.ArgName}}"
-    {{- end}}
-  )
-
-  local -A subparsers=()
-
-  {{range $index, $pos := .PositionalsBase}}
-  {{- "" -}}
-  local _positionals_base_{{.PositionalNumber}}_choices=(
-  {{range .ValueChoices \}}
-    "{{.}}"
-  {{end -}}
-  )
-  {{end \}}
+  local -A subparsers={{ BashAssoc .ParserNames 2 }}
 
   # options
-  {{ range $parser, $options := .Options }}
-  local _options_{{index $.ParserNames $parser}}_names=(
-  {{ range $opt := $options }}
-    "{{$opt.ArgName}}"
-  {{end -}}
-  )
-  {{end \}}
+  {{- range $parser, $options := .Options }}
+  local _options_{{index $.ParserNames $parser}}_names={{ BashArray $options.OptionNames 2 }}
+  {{- end }}
 
   # arguments
-  {{ range $parser, $positionals := .Positionals }}
-  {{ range $arg := $positionals }}
-  local _positionals_{{index $.ParserNames $parser}}_{{$arg.PositionalNumber}}_choices=(
-  {{range .ValueChoices \}}
-    "{{.}}"
-  {{end -}}
-  )
+  {{range $parser, $positionals := .Positionals -}}
+  {{- range $arg := $positionals -}}
+  local _positionals_{{index $.ParserNames $parser}}_{{$arg.PositionalNumber}}_choices=
+  {{- BashArray .ValueChoices 2 }}
   {{end}}
-  {{end \}}
+  {{- end \}}
 
   # shellcheck disable=SC2034
   local cword_index previous_word words current_word
@@ -81,12 +60,12 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   if [[ -z "$current_parser" ]]; then
     parser="base"
   else
-    parser="$current_parser"
+    parser="$current_parser_clean"
   fi
 
   # local -n options_arr requires bash 4.3
   local -n options_arr="_options_base_names_TODO"
-  if [[ -v "options_arr[$previous_word]" && "${options_arr[$previous_word]}" != "__NONE__" ]]; then
+  if [[ 1 == 2 && -v "options_arr[$previous_word]" && "${options_arr[$previous_word]}" != "__NONE__" ]]; then
     # --option values
     # solve edge cases with mistaking positionals with options
     local option_choices="${options_arr[$previous_word]}"
@@ -99,7 +78,7 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
     choices_all+=("${choices_positionals[@]}")
 
     # options
-    local -n choices_options="_options_base_names"
+    local -n choices_options="_options_${parser}_names"
     for i in "${!choices_options[@]}"; do
       choice_option="${choices_options[$i]}"
       if [[ "${used_options[$choice_option]}" != 1 ]]; then

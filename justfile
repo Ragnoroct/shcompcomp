@@ -1,9 +1,9 @@
 set positional-arguments
 
-watchfile file head:
+watchfile file head=(""):
     #!/usr/bin/env bash
 
-    if [[ "$2" == "head" ]]; then
+    if [[ "$2" == "head" || "$2" == "1" ]]; then
       head_out=1
     else
       head_out=0

@@ -23,14 +23,16 @@ type Argument struct {
 }
 
 type BaseOptions []Argument
+type OptionList []Argument
+type PositionalList []Argument
 
 type templateData struct {
 	CliName         string
 	CliNameClean    string
 	PositionalsBase []Argument
 	OptionsBase     BaseOptions
-	Positionals     map[string][]Argument
-	Options         map[string][]Argument
+	Positionals     map[string]PositionalList
+	Options         map[string]OptionList
 	ParserNames     map[string]string
 }
 
@@ -52,8 +54,8 @@ func main() {
 	data := templateData{
 		OptionsBase:     make([]Argument, 0),
 		PositionalsBase: make([]Argument, 0),
-		Positionals:     make(map[string][]Argument, 0),
-		Options:         make(map[string][]Argument, 0),
+		Positionals:     make(map[string]PositionalList, 0),
+		Options:         make(map[string]OptionList, 0),
 		ParserNames:     make(map[string]string),
 		CliNameClean:    cliNameClean,
 		CliName:         cliName,
@@ -78,6 +80,10 @@ func main() {
 		arg.argType = words[0]
 		arg.ArgName = chompQuotes(words[1])
 		arg.Parser = "base" // by default base Parser
+
+		if arg.argType == "pos" && strings.HasPrefix(arg.ArgName, "-") {
+			panic("invalid pos " + arg.ArgName)
+		}
 
 		for _, word := range words {
 			// --choices
@@ -141,8 +147,9 @@ func main() {
 	})
 	check(os.WriteFile("/home/willy/.dotfiles/bashcompletils/compile/complete-template.txt", completeTemplateNew, 0644))
 
-	tmpl, err := template.New("bctil-compile").Parse(string(completeTemplateNew))
-	tmpl = tmpl.Funcs(template.FuncMap{"StringsJoin": strings.Join})
+	tmpl, err := template.New("bctil-compile").Funcs(
+		template.FuncMap{"StringsJoin": strings.Join, "BashArray": BashArray, "BashAssoc": BashAssoc},
+	).Parse(string(completeTemplateNew))
 	if err != nil {
 		panic(err)
 	}
@@ -180,11 +187,80 @@ func chompQuotes(str string) string {
 	return str
 }
 
-func filter[T any](ss []T, test func(T) bool) (ret []T) {
-	for _, s := range ss {
-		if test(s) {
-			ret = append(ret, s)
+func (options OptionList) OptionNames() []string {
+	values := make([]string, 0)
+	for _, option := range options {
+		if option.argType == "opt" {
+			values = append(values, option.ArgName)
 		}
 	}
-	return
+	return values
+}
+
+func BashAssoc(assoc map[string]string, indent int) string {
+	maxLength := 80
+	arrayLines := make([]string, 0)
+	indentStr := strings.Repeat(" ", indent)
+
+	line := ""
+	for key, value := range assoc {
+		concatStr := "[" + key + "]=\"" + value + "\""
+		if len(line) == 0 {
+			line = concatStr
+		} else if len(line)+len(concatStr)+1 > maxLength {
+			arrayLines = append(arrayLines, line)
+			line = concatStr
+		} else {
+			line = line + " " + concatStr
+		}
+	}
+
+	if len(line) > 0 {
+		arrayLines = append(arrayLines, line)
+	}
+
+	if len(arrayLines) == 0 {
+		return "()"
+	} else if len(arrayLines) == 1 {
+		return "(" + arrayLines[0] + ")"
+	} else {
+		for i := range arrayLines {
+			arrayLines[i] = indentStr + arrayLines[i]
+		}
+		return "(\n" + arrayLines[0] + "\n" + indentStr + ")"
+	}
+}
+
+func BashArray(values []string, indent int) string {
+	maxLength := 80
+	arrayLines := make([]string, 0)
+	indentStr := strings.Repeat(" ", indent)
+
+	line := ""
+	for _, value := range values {
+		concatStr := "\"" + value + "\""
+		if len(line) == 0 {
+			line = concatStr
+		} else if len(line)+len(concatStr)+1 > maxLength {
+			arrayLines = append(arrayLines, line)
+			line = concatStr
+		} else {
+			line = line + " " + concatStr
+		}
+	}
+
+	if len(line) > 0 {
+		arrayLines = append(arrayLines, line)
+	}
+
+	if len(arrayLines) == 0 {
+		return "()"
+	} else if len(arrayLines) == 1 {
+		return "(" + arrayLines[0] + ")"
+	} else {
+		for i := range arrayLines {
+			arrayLines[i] = indentStr + arrayLines[i]
+		}
+		return "(\n" + arrayLines[0] + "\n" + indentStr + ")"
+	}
 }
