@@ -37,32 +37,32 @@ run_tests () {
     bctils_cli_register "examplecli"
     bctils_cli_add "examplecli" opt "-h"
     bctils_cli_add "examplecli" opt "--help"
-    __bctils_dump "examplecli"
-#    bctils_v2_cli_compile       "examplecli" --source
-#    expect_complete_compreply   "examplecli " "-h --help"
-#
-#    bctils_v2_cli_register "examplecli"
-#    bctils_v2_cli_add_argument "examplecli" "-h"
-#    bctils_v2_cli_compile "examplecli" "/tmp/bctils_complete_test.sh"
-#    expect_cmd "compile to target file" test -f "/tmp/bctils_complete_test.sh"
-#
-#    current_suite "positionals with choices"
-#    bctils_v2_cli_register      "examplecli2"
-#    bctils_v2_cli_add_argument  "examplecli2" --choices="c1 c2 c3"
-#    bctils_v2_cli_add_argument  "examplecli2" --choices="c4 c5 c6"
-#    bctils_v2_cli_compile       "examplecli2" --source
-#    expect_complete_compreply   "examplecli2 " "c1 c2 c3"
-#    expect_complete_compreply   "examplecli2 c" "c1 c2 c3"
-#    expect_complete_compreply   "examplecli2 d" ""
-#    expect_complete_compreply   "examplecli2 c2 " "c4 c5 c6"
-#    expect_complete_compreply   "examplecli2 c2 d" ""
+    bctils_cli_compile "examplecli" --source
+    expect_complete_compreply   "examplecli " "-h --help"
+
+    rm -rf "/tmp/bctils_complete_test.sh"
+    bctils_cli_register "examplecli"
+    bctils_cli_add "examplecli" "-h"
+    bctils_cli_compile "examplecli" "/tmp/bctils_complete_test.sh"
+    expect_cmd "compile to target file" test -f "/tmp/bctils_complete_test.sh"
+
+    current_suite "positionals with choices"
+    bctils_cli_register      "examplecli2"
+    bctils_cli_add           "examplecli2" pos --choices="c1 c2 c3"
+    bctils_cli_add           "examplecli2" pos --choices="c4 c5 c6"
+    bctils_cli_compile       "examplecli2" --source
+    expect_complete_compreply   "examplecli2 " "c1 c2 c3"
+    expect_complete_compreply   "examplecli2 c" "c1 c2 c3"
+    expect_complete_compreply   "examplecli2 d" ""
+    expect_complete_compreply   "examplecli2 c2 " "c4 c5 c6"
+    expect_complete_compreply   "examplecli2 c2 d" ""
 #
 #    current_suite "positionals with choices and optionals"
-#    bctils_v2_cli_register      "examplecli3"
-#    bctils_v2_cli_add_argument  "examplecli3" --choices="c1 c2 c3"
-#    bctils_v2_cli_add_argument  "examplecli3" "-h"
-#    bctils_v2_cli_add_argument  "examplecli3" "--help"
-#    bctils_v2_cli_compile       "examplecli3" --source
+#    bctils_cli_register      "examplecli3"
+#    bctils_cli_add  "examplecli3" --choices="c1 c2 c3"
+#    bctils_cli_add  "examplecli3" "-h"
+#    bctils_cli_add  "examplecli3" "--help"
+#    bctils_cli_compile       "examplecli3" --source
 #    expect_complete_compreply   "examplecli3 "          "c1 c2 c3 -h --help"
 #    expect_complete_compreply   "examplecli3 c"         "c1 c2 c3"
 #    expect_complete_compreply   "examplecli3 -"         "-h --help"
@@ -71,20 +71,20 @@ run_tests () {
 #    expect_complete_compreply   "examplecli3 -h "       "c1 c2 c3 --help"
 #
 #    current_suite "simple subparsers"
-#    bctils_v2_cli_register      "examplecli4"
-#    bctils_v2_cli_add_argument  "examplecli4" "-h"
-#    bctils_v2_cli_add_argument  "examplecli4" "--help"
-#    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" --choices="c1 c2 c3"
-#    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" "--help"
-#    bctils_v2_cli_add_argument  "examplecli4" -p="sub-cmd" "--print"
-#    bctils_v2_cli_compile       "examplecli4" --source
+#    bctils_cli_register      "examplecli4"
+#    bctils_cli_add  "examplecli4" "-h"
+#    bctils_cli_add  "examplecli4" "--help"
+#    bctils_cli_add  "examplecli4" -p="sub-cmd" --choices="c1 c2 c3"
+#    bctils_cli_add  "examplecli4" -p="sub-cmd" "--help"
+#    bctils_cli_add  "examplecli4" -p="sub-cmd" "--print"
+#    bctils_cli_compile       "examplecli4" --source
 #    expect_complete_compreply   "examplecli4 " "-h --help"
 #    expect_complete_compreply   "examplecli4 sub-cmd " "c1 c2 c3 --help --print"
 #
 #    current_suite "simple options with arguments like --opt val"
-#    bctils_v2_cli_register      "examplecli5"
-#    bctils_v2_cli_add_argument  "examplecli5" "--key" --choices="val1 val2"
-#    bctils_v2_cli_compile       "examplecli5" --source
+#    bctils_cli_register      "examplecli5"
+#    bctils_cli_add  "examplecli5" "--key" --choices="val1 val2"
+#    bctils_cli_compile       "examplecli5" --source
 #    expect_complete_compreply   "examplecli5 " "--key"
 #    expect_complete_compreply   "examplecli5 --key " "val1 val2"
 
@@ -208,9 +208,9 @@ run_benchmarks () {
     complete -F __bctils_controlgroup_completer_1 "benchmark_control_1"
     current_suite "benchmark testing completions" && print_suite
     # setup testbenchmark1
-    bctils_v2_cli_register      "benchmark_1"
-    bctils_v2_cli_add_argument  "benchmark_1" "--key" --choices="val1 val2"
-    bctils_v2_cli_compile       "benchmark_1" --source
+    bctils_cli_register      "benchmark_1"
+    bctils_cli_add  "benchmark_1" "--key" --choices="val1 val2"
+    bctils_cli_compile       "benchmark_1" --source
     
     # benchmark_control_1
     time_start=$(($(date +%s%N)/1000000))
@@ -240,9 +240,9 @@ run_benchmarks () {
     while true; do
         iter=$((iter+1))
         if [[ "$iter" -gt "$iterations" ]]; then break; fi
-        bctils_v2_cli_register      "benchmark_compile_1"
-        bctils_v2_cli_add_argument  "benchmark_compile_1" "--key" --choices="val1 val2"
-        bctils_v2_cli_compile       "benchmark_compile_1" --source
+        bctils_cli_register      "benchmark_compile_1"
+        bctils_cli_add  "benchmark_compile_1" "--key" --choices="val1 val2"
+        bctils_cli_compile       "benchmark_compile_1" --source
     done
     time_benchmark_compile_1=$((($(date +%s%N)/1000000)-time_start))
 
@@ -252,18 +252,18 @@ run_benchmarks () {
     while true; do
         iter=$((iter+1))
         if [[ "$iter" -gt "$iterations" ]]; then break; fi
-        bctils_v2_cli_register      "benchmark_compilereg_1"
+        bctils_cli_register      "benchmark_compilereg_1"
     done
     time_benchmark_compilereg_1=$((($(date +%s%N)/1000000)-time_start))
 
     # benchmark compilation add argument
-    bctils_v2_cli_register      "benchmark_compile_addarg_1"
+    bctils_cli_register      "benchmark_compile_addarg_1"
     time_start=$(($(date +%s%N)/1000000))
     local iter=-1    # todo: fix this. while i it's constantly reset to 0
     while true; do
         iter=$((iter+1))
         if [[ "$iter" -gt "$iterations" ]]; then break; fi
-        bctils_v2_cli_add_argument  "benchmark_compile_addarg_1" "--key" --choices="val1 val2"
+        bctils_cli_add  "benchmark_compile_addarg_1" "--key" --choices="val1 val2"
     done
     time_benchmark_compile_addarg_1=$((($(date +%s%N)/1000000)-time_start))
 
@@ -274,10 +274,10 @@ run_benchmarks () {
     while true; do
         iter=$((iter+1))
         if [[ "$iter" -gt "$iterations" ]]; then break; fi
-        bctils_v2_cli_register      "benchmark_compile_and_source_1"
-        bctils_v2_cli_add_argument  "benchmark_compile_and_source_1" "--key" --choices="val1 val2"
+        bctils_cli_register      "benchmark_compile_and_source_1"
+        bctils_cli_add  "benchmark_compile_and_source_1" "--key" --choices="val1 val2"
         time_start=$(($(date +%s%N)/1000000))
-        bctils_v2_cli_compile       "benchmark_compile_and_source_1" --source
+        bctils_cli_compile       "benchmark_compile_and_source_1" --source
         time_total=$((time_total+(($(date +%s%N)/1000000)-time_start)))
     done
     time_benchmark_compile_and_source_1="$time_total"
@@ -346,6 +346,7 @@ complete_cmd_str () {
     COMP_CWORD="$((${#comp_words[@]} - 1))"
     COMP_POINT="$(("${#input_line}" + 0))"
 
+    # shellcheck disable=SC2091
     "$(complete -p "$cmd_name" | sed "s/.*-F \\([^ ]*\\) .*/\\1/")" &> /tmp/bashcompletils.out
     complete_cmd_str_result="${COMPREPLY[*]}"
 }
@@ -372,6 +373,7 @@ expect_complete_compreply () {
     COMP_WORDS=("${comp_words[@]}")
     COMP_CWORD="$comp_cword"
     COMP_POINT="$comp_point"
+    # shellcheck disable=SC2091
     "$(complete -p "$cmd_name" | sed "s/.*-F \\([^ ]*\\) .*/\\1/")" &> /tmp/bashcompletils.out
     output=$(cat /tmp/bashcompletils.out)
     
@@ -413,19 +415,25 @@ else
       echo "file change: $dir_file $events"
     fi
 
-    if [[ "$events" =~ .*"CLOSE_WRITE".* && "$dir_file" == "bctils-lib.go" ]]; then
+    if [[ "$events" =~ .*"CLOSE_WRITE".* ]] && [[ "$dir_file" == "bctils-lib.go" || "$dir_file" == "complete-template.txt" ]]; then
       echo "rebuilding golang binary..."
-      just build
+      if ! just build; then
+        echo -e "${RED}ERROR: bctils failed to build${NC}"
+        return
+      fi
     fi
 
     echo "waiting for changes..."
-    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh"
+    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh" || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }
   }
 
-  just build
-  TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh"
+  if just build; then
+    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/tests.sh"  || { echo -e "${RED}ERROR: tests.sh failed${NC}"; }
+  else
+    echo -e "${RED}ERROR: bctils failed to build${NC}"
+  fi
   inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
-  --exclude "$proj_dir/(compile|build)/*/**" | \
+  --exclude "$proj_dir/((compile|build)/.*|.*\.log)" | \
   while read -r watch_file events dir_file; do
     inotify_loop "$watch_file" "$events" "$dir_file"
   done

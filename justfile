@@ -3,13 +3,15 @@ set positional-arguments
 watchfile file:
     #!/usr/bin/env bash
 
-    clear && bat "$1"
-    inotifywait -q -m -e close_write,modify,create,delete "$(dirname "$1")" | \
+    terminal_row_count="$(tput lines)"
+    clear && bat "$1" --paging=never --color=always | head -n "$terminal_row_count"
+    inotifywait -q -m -e close_write,modify,create,delete "$(dirname "$1")" --exclude ".*.log" | \
     while read -r file events dir_file; do
         if [[ "$(basename "$1")" == "$dir_file" \
             && "$(stat --printf="%s" "$1")" -gt 0 \
         ]]; then
-            clear && bat "$1"
+            terminal_row_count="$(tput lines)"
+            clear && bat "$1" --paging=never --color=always | head -n "$terminal_row_count"
         fi
     done
 

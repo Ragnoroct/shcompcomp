@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+log() { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+
+__bctils_v2_autocomplete_{{ .CliNameClean }} () {
+  local _options_base_names=({{ range $index, $option := .OptionsBase}}
+    "{{$option.ArgName}}"
+    {{- end}}
+  )
+
+  {{range $index, $pos := .PositionalsBase}}
+  {{- "" -}}
+  local _positionals_base_{{.PositionalNumber}}_choices=(
+  {{range .ValueChoices \}}
+    "{{.}}"
+  {{end -}}
+  )
+  {{end \}}
+
+  # {str_options_vars:multiline}}
+  # {str_arg_choices:multiline}}
+  # {options_array_str:multiline}}
+  #local -A subparsers=(
+  #  {str_subparsers_assoc:multiline}}
+  #)
+
+  # shellcheck disable=SC2034
+  local cword_index previous_word words current_word
+  _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
+
+  local -A used_options=()
+  local carg_index=0
+  local i=-1
+  local current_parser=""
+  local current_parser_clean=""
+  local completing_option_val=0
+  while true; do
+    i=$((i+1))
+    if [[ -z "${words[$i]}" ]]; then break; fi
+    word="${words[$i]}"
+
+    # argument
+    if [[ ! "$word" =~ ^'-' && "$i" -lt "$cword_index" ]]; then
+      carg_index=$((carg_index+1))
+    fi
+
+    # option
+    if [[ "$word" =~ ^'-' && "$i" -le "$cword_index" ]]; then
+      if ((i<=cword_index)); then
+        used_options["$word"]=1
+      fi
+    fi
+
+    # current parser
+    # todo: need a way to ensure subparser match isn't an arg or option value
+    if [[ "$i" -le "$cword_index" ]]; then
+      subparser_candidate="${current_parser}${word}"
+      if [[ -v "subparsers[$subparser_candidate]" ]]; then
+        current_parser="$subparser_candidate"
+        current_parser_clean="${subparsers[$subparser_candidate]}"
+        carg_index=1 # resets (todo: why 1 intead of 0)
+      fi
+    fi
+  done
+
+  if [[ -z "$current_parser" ]]; then
+    parser="base"
+  else
+    parser="$current_parser"
+  fi
+
+
+  # local -n options_arr requires bash 4.3
+  local -n options_arr="_options_base_names_TODO"
+  if [[ -v "options_arr[$previous_word]" && "${options_arr[$previous_word]}" != "__NONE__" ]]; then
+    # --option values
+    # solve edge cases with mistaking positionals with options
+    local option_choices="${options_arr[$previous_word]}"
+    mapfile -t COMPREPLY < <(compgen -W "${option_choices}" -- "$current_word")
+  else
+    local choices_all=()
+
+    # positionals
+    local -n choices_positionals="_positionals_${parser}_${carg_index}_choices"
+    choices_all+=("${choices_positionals[@]}")
+
+    # options
+    local -n choices_options="_options_base_names"
+    for i in "${!choices_options[@]}"; do
+      choice_option="${choices_options[$i]}"
+      if [[ "${used_options[$choice_option]}" != 1 ]]; then
+        choices_all+=("${choices_options[$i]}")
+      fi
+    done
+
+    mapfile -t COMPREPLY < <(compgen -W "${choices_all[*]}" -- "$current_word")
+  fi
+}
+
+complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} "{{ .CliNameClean }}"
