@@ -1,5 +1,5 @@
 benchmark:
-    TEST_BENCHMARK=1 ./tests/bctils-tests.sh
+    TEST_BENCHMARK=1 ./bctils-tests.sh
 
 test:
     ./bctils-tests.sh

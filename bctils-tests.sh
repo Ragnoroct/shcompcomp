@@ -264,8 +264,8 @@ run_benchmarks() {
   current_suite "benchmark testing completions" && print_suite
   # setup testbenchmark1
   bctils_cli_register "benchmark_1"
-  bctils_cli_add "benchmark_1" "--key" --choices="val1 val2"
-  bctils_cli_compile "benchmark_1" --source
+  bctils_cli_add      "benchmark_1" opt "--key" --choices="val1 val2"
+  bctils_cli_compile  "benchmark_1" --source
 
   # benchmark_control_1
   time_start=$(($(date +%s%N) / 1000000))
@@ -296,7 +296,7 @@ run_benchmarks() {
     iter=$((iter + 1))
     if [[ "$iter" -gt "$iterations" ]]; then break; fi
     bctils_cli_register "benchmark_compile_1"
-    bctils_cli_add "benchmark_compile_1" "--key" --choices="val1 val2"
+    bctils_cli_add "benchmark_compile_1" opt "--key" --choices="val1 val2"
     bctils_cli_compile "benchmark_compile_1" --source
   done
   time_benchmark_compile_1=$((($(date +%s%N) / 1000000) - time_start))
@@ -318,7 +318,7 @@ run_benchmarks() {
   while true; do
     iter=$((iter + 1))
     if [[ "$iter" -gt "$iterations" ]]; then break; fi
-    bctils_cli_add "benchmark_compile_addarg_1" "--key" --choices="val1 val2"
+    bctils_cli_add "benchmark_compile_addarg_1" opt "--key" --choices="val1 val2"
   done
   time_benchmark_compile_addarg_1=$((($(date +%s%N) / 1000000) - time_start))
 
@@ -330,7 +330,7 @@ run_benchmarks() {
     iter=$((iter + 1))
     if [[ "$iter" -gt "$iterations" ]]; then break; fi
     bctils_cli_register "benchmark_compile_and_source_1"
-    bctils_cli_add "benchmark_compile_and_source_1" "--key" --choices="val1 val2"
+    bctils_cli_add "benchmark_compile_and_source_1" opt "--key" --choices="val1 val2"
     time_start=$(($(date +%s%N) / 1000000))
     bctils_cli_compile "benchmark_compile_and_source_1" --source
     time_total=$((time_total + (($(date +%s%N) / 1000000) - time_start)))

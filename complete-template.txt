@@ -141,4 +141,4 @@ source "{{.}}"
 {{end}}
 
 # todo: add closure validation when sourcing
-complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} -o nospace "{{ .CliNameClean }}"
+complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} -o nospace "{{ .CliName }}"
