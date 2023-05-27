@@ -24,8 +24,11 @@ type Argument struct {
 	ClosureName      string
 }
 
-type BaseOptions []Argument
-type OptionList []Argument
+type OptionList struct {
+	Parser      string
+	ParserClean string
+	Items       []Argument
+}
 
 type PositionalList struct {
 	Parser      string
@@ -38,14 +41,12 @@ type Config struct {
 }
 
 type templateData struct {
-	CliName         string
-	CliNameClean    string
-	Config          Config
-	PositionalsBase []Argument
-	OptionsBase     BaseOptions
-	Positionals     map[string]PositionalList
-	Options         map[string]OptionList
-	ParserNames     map[string]string
+	CliName      string
+	CliNameClean string
+	Config       Config
+	Positionals  map[string]PositionalList
+	Options      map[string]OptionList
+	ParserNames  map[string]string
 }
 
 func main() {
@@ -64,13 +65,11 @@ func main() {
 	cliNameClean := regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(cliName, "")
 
 	data := templateData{
-		OptionsBase:     make([]Argument, 0),
-		PositionalsBase: make([]Argument, 0),
-		Positionals:     make(map[string]PositionalList, 0),
-		Options:         make(map[string]OptionList, 0),
-		ParserNames:     make(map[string]string),
-		CliNameClean:    cliNameClean,
-		CliName:         cliName,
+		Positionals:  make(map[string]PositionalList, 0),
+		Options:      make(map[string]OptionList, 0),
+		ParserNames:  make(map[string]string),
+		CliNameClean: cliNameClean,
+		CliName:      cliName,
 		Config: Config{
 			SourceIncludes: make([]string, 0),
 		},
@@ -124,14 +123,14 @@ func main() {
 
 		for _, word := range words {
 			// --choices
-			if strings.HasPrefix(word, "--choices") && arg.argType == "pos" {
+			if strings.HasPrefix(word, "--choices") {
 				choices := chompQuotes(strings.Split(word, "=")[1])
 				arg.ValueChoices = strings.Fields(choices)
 				arg.CompleteType = "choices"
 			}
 
 			// --closure
-			if strings.HasPrefix(word, "--closure") && arg.argType == "pos" {
+			if strings.HasPrefix(word, "--closure") {
 				closureName := chompQuotes(strings.Split(word, "=")[1])
 				arg.CompleteType = "closure"
 				arg.ClosureName = closureName
@@ -144,6 +143,12 @@ func main() {
 				ParserClean: regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_"),
 			}
 		}
+		if _, ok := data.Options[arg.Parser]; !ok {
+			data.Options[arg.Parser] = OptionList{
+				Parser:      arg.Parser,
+				ParserClean: regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_"),
+			}
+		}
 
 		if _, ok := data.ParserNames[arg.Parser]; !ok {
 			data.ParserNames[arg.Parser] = regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_")
@@ -151,10 +156,10 @@ func main() {
 
 		if arg.argType == "opt" {
 			// options
-			if arg.Parser == "base" {
-				data.OptionsBase = append(data.OptionsBase, arg)
+			if entryOption, ok := data.Options[arg.Parser]; ok {
+				entryOption.Items = append(entryOption.Items, arg)
+				data.Options[arg.Parser] = entryOption
 			}
-			data.Options[arg.Parser] = append(data.Options[arg.Parser], arg)
 		} else if arg.argType == "pos" {
 			// positionals
 			if _, ok := positionalCounter[arg.Parser]; !ok {
@@ -168,10 +173,6 @@ func main() {
 				entry.Items = append(entry.Items, arg)
 				data.Positionals[arg.Parser] = entry
 			}
-
-			if arg.Parser == "base" {
-				data.PositionalsBase = append(data.PositionalsBase, arg)
-			}
 		}
 	}
 	if scanner.Err() != nil {
@@ -179,7 +180,7 @@ func main() {
 	}
 
 	for k := range data.Options {
-		if len(data.Options[k]) == 0 {
+		if len(data.Options[k].Items) == 0 {
 			delete(data.Options, k)
 		}
 	}
@@ -207,7 +208,13 @@ func main() {
 	check(os.WriteFile("/home/willy/.dotfiles/bashcompletils/compile/complete-template.txt", completeTemplateNew, 0644))
 
 	tmpl, err := template.New("bctil-compile").Funcs(
-		template.FuncMap{"StringsJoin": strings.Join, "BashArray": BashArray, "BashAssoc": BashAssoc},
+		template.FuncMap{
+			"StringsJoin":      strings.Join,
+			"BashArray":        BashArray,
+			"BashAssocQuote":   BashAssocQuote,
+			"BashAssocNoQuote": BashAssocNoQuote,
+			"BashAssoc":        BashAssoc,
+		},
 	).Parse(string(completeTemplateNew))
 	if err != nil {
 		panic(err)
@@ -224,18 +231,6 @@ func check(e error) {
 	}
 }
 
-func (options BaseOptions) Join() string {
-	var sep string
-	if sep == "" {
-		sep = ", "
-	}
-	var strs []string
-	for _, opt := range options {
-		strs = append(strs, opt.ArgName)
-	}
-	return strings.Join(strs, sep)
-}
-
 func chompQuotes(str string) string {
 	var found bool
 	if str, found = strings.CutPrefix(str, "'"); found {
@@ -248,22 +243,49 @@ func chompQuotes(str string) string {
 
 func (options OptionList) OptionNames() []string {
 	values := make([]string, 0)
-	for _, option := range options {
-		if option.argType == "opt" {
-			values = append(values, option.ArgName)
-		}
+	for _, option := range options.Items {
+		values = append(values, option.ArgName)
 	}
 	return values
 }
 
-func BashAssoc(assoc map[string]string, indent int) string {
+func (options OptionList) OptionsDataAssoc() map[string]string {
+	assoc := make(map[string]string, 0)
+	for _, arg := range options.Items {
+		if arg.CompleteType != "" {
+			assoc["__type__,"+arg.ArgName] = arg.CompleteType
+			if arg.CompleteType == "choices" {
+				assoc["__value__,"+arg.ArgName] = strings.Join(arg.ValueChoices, " ")
+			} else if arg.CompleteType == "closure" {
+				assoc["__value__,"+arg.ArgName] = arg.ClosureName
+			}
+		}
+	}
+
+	return assoc
+}
+
+func BashAssocQuote(assoc map[string]string, indent int) string {
+	return BashAssoc(assoc, indent, true)
+}
+
+func BashAssocNoQuote(assoc map[string]string, indent int) string {
+	return BashAssoc(assoc, indent, false)
+}
+
+// BashAssoc todo: sorted if possible and prettier
+func BashAssoc(assoc map[string]string, indent int, quoteKey bool) string {
 	maxLength := 80
 	arrayLines := make([]string, 0)
 	indentStr := strings.Repeat(" ", indent)
+	var quoteStr = ""
+	if quoteKey {
+		quoteStr = "\""
+	}
 
 	line := ""
 	for key, value := range assoc {
-		concatStr := "[" + key + "]=\"" + value + "\""
+		concatStr := "[" + quoteStr + key + quoteStr + "]=\"" + value + "\""
 		if len(line) == 0 {
 			line = concatStr
 		} else if len(line)+len(concatStr)+1 > maxLength {
@@ -277,6 +299,8 @@ func BashAssoc(assoc map[string]string, indent int) string {
 	if len(line) > 0 {
 		arrayLines = append(arrayLines, line)
 	}
+	log.Printf("assoc: %v", assoc)
+	log.Printf("arrayLines: %v", arrayLines)
 
 	if len(arrayLines) == 0 {
 		return "()"
@@ -284,9 +308,9 @@ func BashAssoc(assoc map[string]string, indent int) string {
 		return "(" + arrayLines[0] + ")"
 	} else {
 		for i := range arrayLines {
-			arrayLines[i] = indentStr + arrayLines[i]
+			arrayLines[i] = indentStr + indentStr + arrayLines[i]
 		}
-		return "(\n" + arrayLines[0] + "\n" + indentStr + ")"
+		return "(\n" + strings.Join(arrayLines, "\n") + "\n" + indentStr + ")"
 	}
 }
 
@@ -318,8 +342,8 @@ func BashArray(values []string, indent int) string {
 		return "(" + arrayLines[0] + ")"
 	} else {
 		for i := range arrayLines {
-			arrayLines[i] = indentStr + arrayLines[i]
+			arrayLines[i] = indentStr + indentStr + arrayLines[i]
 		}
-		return "(\n" + arrayLines[0] + "\n" + indentStr + ")"
+		return "(\n" + strings.Join(arrayLines, "\n") + "\n" + indentStr + ")"
 	}
 }

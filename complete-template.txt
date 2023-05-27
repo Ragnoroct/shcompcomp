@@ -2,14 +2,17 @@
 log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
 log_everything () { if [[ "{{.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.log; exec 2>&1; set -x; fi; }
 
+# todo: find a way to preserve single space between template {{/* actions */}}
 __bctils_v2_autocomplete_{{ .CliNameClean }} () {
-  local -A subparsers={{ BashAssoc .ParserNames 2 }}
+  local -A subparsers={{ BashAssocNoQuote .ParserNames 2 }}
 
   {{- if .Options }}
   # options
-  {{- range $parser, $options := .Options }}
-  local _options_{{index $.ParserNames $parser}}_names={{ BashArray $options.OptionNames 2 }}
-  {{- end }}
+  {{range $parser, $options := .Options -}}
+  local _option_{{$options.ParserClean}}_names={{ BashArray $options.OptionNames 2 }}
+  local -A _option_{{$options.ParserClean}}_data={{- BashAssocQuote $options.OptionsDataAssoc 2 }}
+  {{ end \}}
+  {{ else }}
   {{- end }}
 
   {{- if .Positionals }}
@@ -25,9 +28,8 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   {{- end}}
   {{ end }}
   {{- end \}}
-  {{- end -}}
+  {{- end }}
 
-  {{ "" }}
   # shellcheck disable=SC2034
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
@@ -76,12 +78,28 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
     parser="$current_parser_clean"
   fi
 
-  # local -n options_arr requires bash 4.3
-  local -n options_arr="_options_base_names_TODO"
-  if [[ 1 == 2 && -v "options_arr[$previous_word]" && "${options_arr[$previous_word]}" != "__NONE__" ]]; then
+
+  local -n option_complete_data="_option_${parser}_data"
+  log "bob: option_complete_data[__type__,$previous_word]"
+  if [[ -v option_complete_data[@] && -v "option_complete_data[__type__,$previous_word]" ]]; then
     # --option values
     # solve edge cases with mistaking positionals with options
-    local option_choices="${options_arr[$previous_word]}"
+    local option_name="$previous_word"
+    local option_choices
+    log "type: ${option_complete_data[__type__,$option_name]}"
+    case "${option_complete_data[__type__,$option_name]}" in
+      "choices")
+        option_choices="${option_complete_data[__value__,$option_name]}"
+        ;;
+      "closure")
+        local option_closure="${option_complete_data[__value__,$option_name]}"
+        COMPREPLY=()
+        declare -g BCTILS_CURRENT_WORD="$current_word"
+        "$option_closure"
+        option_choices="${COMPREPLY[*]}"
+        COMPREPLY=()
+        ;;
+    esac
     mapfile -t COMPREPLY < <(compgen -W "${option_choices}" -- "$current_word")
   else
     local choices_all=()
@@ -104,7 +122,7 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
     esac
 
     # options
-    local -n choices_options="_options_${parser}_names"
+    local -n choices_options="_option_${parser}_names"
     for i in "${!choices_options[@]}"; do
       choice_option="${choices_options[$i]}"
       if [[ "${used_options[$choice_option]}" != 1 ]]; then

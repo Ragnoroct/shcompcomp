@@ -137,9 +137,11 @@ run_tests() {
   current_suite "simple options with arguments like --opt val"
   bctils_cli_register "examplecli7"
   bctils_cli_add      "examplecli7" opt "--key" --choices="val1 val2"
+  bctils_cli_add      "examplecli7" opt "--tree" --closure="__examplecli5_pos_1_completer"
   bctils_cli_compile  "examplecli7" --source
-  expect_complete_compreply "examplecli7 " "--key"
+  expect_complete_compreply "examplecli7 " "--key --tree"
   expect_complete_compreply "examplecli7 --key " "val1 val2"
+  expect_complete_compreply "examplecli7 --tree " "c8 c9 c10"
 
   current_suite "exclusive options --vanilla --chocolate"
   current_suite "complete option value like --opt=value"
