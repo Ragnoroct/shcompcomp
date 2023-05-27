@@ -7,6 +7,7 @@ curr_dir="$PWD"
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+YELLOW='\033[0;33m'
 MAGENTA='\033[0;35m'
 NC='\033[0m'
 
@@ -125,21 +126,21 @@ run_tests() {
 
   current_suite "include other source files"
   __bctils_test_i_was_sourced=0
-  printf '__bctils_test_i_was_sourced=42' > "/tmp/__bctils_source_include.sh"
+  printf '__bctils_test_i_was_sourced=42' >"/tmp/__bctils_source_include.sh"
   expect_cmd "not sourced yet" test "$__bctils_test_i_was_sourced" == 0
   bctils_cli_register "examplecli6"
-  bctils_cli_add      "examplecli6" cfg "INCLUDE_SOURCE=/tmp/__bctils_source_include.sh"
-  bctils_cli_add      "examplecli6" pos --choices="c1"
-  bctils_cli_compile  "examplecli6" --source
+  bctils_cli_add "examplecli6" cfg "INCLUDE_SOURCE=/tmp/__bctils_source_include.sh"
+  bctils_cli_add "examplecli6" pos --choices="c1"
+  bctils_cli_compile "examplecli6" --source
   expect_complete_compreply "examplecli5 " "c8 c9 c10"
   expect_cmd "now sourced" test "$__bctils_test_i_was_sourced" == 42
 
-  #    current_suite "simple options with arguments like --opt val"
-  #    bctils_cli_register      "examplecli5"
-  #    bctils_cli_add  "examplecli5" "--key" --choices="val1 val2"
-  #    bctils_cli_compile       "examplecli5" --source
-  #    expect_complete_compreply   "examplecli5 " "--key"
-  #    expect_complete_compreply   "examplecli5 --key " "val1 val2"
+  current_suite "simple options with arguments like --opt val"
+  bctils_cli_register "examplecli7"
+  bctils_cli_add "examplecli7" opt "--key" --choices="val1 val2"
+  bctils_cli_compile "examplecli7"
+  expect_complete_compreply "examplecli7 " "--key"
+  expect_complete_compreply "examplecli7 --key " "val1 val2"
 
   current_suite "exclusive options --vanilla --chocolate"
   current_suite "complete option value like --opt=value"
@@ -462,7 +463,7 @@ _example_cli_branch_autocomplete() {
 if [[ "$TEST_RUN_MODE" == "RUN_TESTS_ONCE" ]]; then
   run_tests
 else
-  inotify_loop() {
+  __bctilstest_inotify_loop() {
     local watch_file="$1"
     local events="$2"
     local dir_file="$3"
@@ -487,20 +488,68 @@ else
       BCTILS_COMPILE_TIME=$((($(date +%s%N) / 1000000) - time_start))
     fi
 
-    BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests failed${NC}"; }
+    __bctils_test_run_test_script
     echo "waiting for changes..."
   }
 
-  time_start=$(($(date +%s%N) / 1000000))
-  if just build; then
-    TEST_RUN_MODE="RUN_TESTS_ONCE" bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests failed${NC}"; }
-  else
-    echo -e "${RED}ERROR: bctils failed to build${NC}"
-  fi
-  BCTILS_COMPILE_TIME=$((($(date +%s%N) / 1000000) - time_start))
+  __bctils_test_run_test_script() {
+    BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" \
+    TEST_RUN_MODE="RUN_TESTS_ONCE" \
+    bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests failed${NC}"; }
+  }
+
+  __bctilstest_kill_other_procs () {
+    local pid gpid_matches script_name pid_i pid_killed script_name
+
+    script_name="$(basename -- "${BASH_SOURCE[0]}")"
+    current_group_id="$(ps -o pgid= "$$")"
+
+    if [[ -z "$script_name" ]]; then
+      echo -e "${RED}ERROR: script_name is empty. don't want to kill all processes${NC}"
+      return 1
+    fi
+
+    # shellcheck disable=SC2009
+    readarray -t gpid_matches < <(ps x -o "%r %a" | grep "$script_name" | grep -v "$current_group_id" | grep -v grep | awk '{$1=$1};1' | tr -s ' ' | cut -d ' ' -f1 | sort | uniq)
+    if [[ "${#gpid_matches[@]}" -gt 0 ]]; then
+      echo -e "${YELLOW}WARNING: found rogue $script_name processes ${NC}"
+      echo -e "${YELLOW}killing pids ${gpid_matches[*]}${NC}"
+      for pid in "${gpid_matches[@]}"; do
+        kill -15 "-$pid"
+      done
+      while [[ "${#gpid_matches[@]}" -gt 0 ]]; do
+        pid_killed=0
+        for pid_i in "${!gpid_matches[@]}"; do
+          if ! kill -0 "${gpid_matches[$pid_i]}" 2> /dev/null; then
+            unset 'gpid_matches[$pid_i]'
+            pid_killed=1
+            break
+          fi
+        done
+        if [[ "$pid_killed" == 0 ]]; then
+          sleep 0.5
+        fi
+      done
+    fi
+  }
+
+  __bctilstest_buildgolang () {
+    time_start=$(($(date +%s%N) / 1000000))
+    if just build; then
+      BCTILS_COMPILE_TIME=$((($(date +%s%N) / 1000000) - time_start))
+      return 0
+    else
+      echo -e "${RED}ERROR: bctils failed to build${NC}"
+      return 1
+    fi
+  }
+
+  export BCTILS_COMPILE_TIME=0
+  __bctilstest_kill_other_procs
+  __bctilstest_buildgolang && __bctils_test_run_test_script
   inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
     --exclude "$proj_dir/((compile|build|.git|.idea)/.*|.*\.log)" |
     while read -r watch_file events dir_file; do
-      inotify_loop "$watch_file" "$events" "$dir_file"
+      __bctilstest_inotify_loop "$watch_file" "$events" "$dir_file"
     done
 fi
