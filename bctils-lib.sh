@@ -39,7 +39,7 @@ bctils_cli_add () {
   fi
 
   case "$arg_type" in
-    "flg") part_arg_1=" \"$1\""; shift ;;
+    "cfg") part_arg_1=" \"$1\""; shift ;;
     "opt") part_arg_1=" \"$1\""; shift ;;
     "pos") part_arg_1="" ;;
     *)

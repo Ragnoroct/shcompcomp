@@ -33,9 +33,14 @@ type PositionalList struct {
 	Items       []Argument
 }
 
+type Config struct {
+	SourceIncludes []string
+}
+
 type templateData struct {
 	CliName         string
 	CliNameClean    string
+	Config          Config
 	PositionalsBase []Argument
 	OptionsBase     BaseOptions
 	Positionals     map[string]PositionalList
@@ -66,6 +71,9 @@ func main() {
 		ParserNames:     make(map[string]string),
 		CliNameClean:    cliNameClean,
 		CliName:         cliName,
+		Config: Config{
+			SourceIncludes: make([]string, 0),
+		},
 	}
 
 	positionalCounter := map[string]int{}
@@ -96,8 +104,17 @@ func main() {
 
 		if arg.argType == "opt" {
 			arg.ArgName = chompQuotes(words[1])
-		} else {
+		} else if arg.argType == "pos" {
 			arg.ArgName = ""
+		} else if arg.argType == "cfg" {
+			keyValue := strings.Split(chompQuotes(words[1]), "=")
+			if keyValue[0] == "INCLUDE_SOURCE" {
+				data.Config.SourceIncludes = append(data.Config.SourceIncludes, keyValue[1])
+			} else {
+				panic("unknown config key " + keyValue[0])
+			}
+		} else {
+			panic("unknown add operation " + arg.argType)
 		}
 		arg.CompleteType = ""
 

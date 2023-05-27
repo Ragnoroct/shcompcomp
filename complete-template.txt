@@ -32,6 +32,9 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
 
+  # default add space after completion
+  compopt +o nospace
+
   local -A used_options=()
   local carg_index=0
   local i=-1
@@ -113,5 +116,11 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   fi
 }
 
+{{if .Config.SourceIncludes}}
+{{range .Config.SourceIncludes -}}
+source "{{.}}"
+{{end}}
+{{end}}
+
 # todo: add closure validation when sourcing
-complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} "{{ .CliNameClean }}"
+complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} -o nospace "{{ .CliNameClean }}"

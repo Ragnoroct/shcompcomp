@@ -1,13 +1,89 @@
 #!/usr/bin/env bash
 
-__watchfile_main () {
-  echo "bob"
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+FWATCH_DIR="${FWATCH_DIR:-"$script_dir/../compile"}"
+
+__watchfile_main() {
+  local file="$1"
+  shift
+  local head_file=0
+  local tail_file=0
+  local file_resolved
+  local watch_type=""
+
+  if [[ ! "$file" =~ ^"." ]]; then
+    file_resolved="$(realpath "$FWATCH_DIR/$file" 2>/dev/null)"
+  else
+    file_resolved="$(realpath "$file" 2>/dev/null)"
+  fi
+
+  if [[ ! -f "$file_resolved" ]]; then
+    echo "error: '$file_resolved' doesn't exist"
+    return 1
+  fi
+
+  if [[ "$1" == "-t" ]]; then
+    tail_file=1
+    watch_type="tail"
+    echo "error: busted option. use full or head"
+    return 1
+  elif [[ "$1" == "-h" ]]; then
+    head_file=1
+    watch_type=" (head)"
+  fi
+
+  __watchfile_inotifywait_action() {
+    if [[ "$head_file" == 1 ]]; then
+      page_size="$(($(tput lines) - 3))"
+      clear && bat "$file_resolved" --paging=never --color=always | head -n "$page_size"
+    elif [[ "$tail_file" == 1 ]]; then
+      page_size="$(($(tput lines) - 5))"
+      clear && bat "$file_resolved" --paging=never --color=always | less -FX
+    else
+      clear && bat "$file_resolved" --paging=never --color=always
+    fi
+    echo -n "watching: $file$watch_type"
+  }
+
+  __watchfile_inotifywait_action
+  inotifywait -q -m -e close_write,modify,create,delete "$(dirname "$file_resolved")" --exclude ".*.log" |
+    while read -r _ events dir_file; do
+      if [[
+      "$(basename "$file_resolved")" == "$dir_file" &&
+      "$(stat --printf="%s" "$file_resolved")" -gt 0 &&
+      "$events" =~ .*"CLOSE_WRITE".* ]]; then
+        __watchfile_inotifywait_action
+      fi
+    done
 }
 
-__watchfile_complete_files () {
-  log "here"
-  mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$CURRENT_WORD")
+__watchfile_complete_files() {
+  if [[ "$BCTILS_CURRENT_WORD" =~ ^"." ]]; then
+    # complete files starting in current directory
+    compopt -o nospace
+    mapfile -t COMPREPLY < <(compgen -o filenames -f -- "$BCTILS_CURRENT_WORD")
+    if [[ "${#COMPREPLY[@]}" == 1 ]]; then
+      if [[ -d "${COMPREPLY[0]}" ]]; then
+        COMPREPLY[0]="${COMPREPLY[0]}/"
+      elif [[ -f "${COMPREPLY[0]}" ]]; then
+        compopt +o nospace # turn back on spaces
+      fi
+    fi
+  elif [[ ! "$BCTILS_CURRENT_WORD" =~ ^"-" ]]; then
+    # complete files in default dir
+    compopt -o nospace
+    readarray -td ":" file_matches < <(find "$FWATCH_DIR" -name "$BCTILS_CURRENT_WORD*" -type f -printf "%f:")
+    mapfile -t COMPREPLY < <(compgen -W "${file_matches[*]}" -- "$BCTILS_CURRENT_WORD")
+    if [[ "${#COMPREPLY[@]}" == 1 ]]; then
+      if [[ -f "${FWATCH_DIR}/${COMPREPLY[0]}" ]]; then
+        compopt +o nospace # turn back on spaces
+      fi
+    fi
+  fi
 }
 
 # if not being sourced
-(return 0 2>/dev/null) || __watchfile_main
+(return 0 2>/dev/null) || {
+  __watchfile_main "$@"
+  exit "$?"
+}

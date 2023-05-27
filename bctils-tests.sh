@@ -123,6 +123,17 @@ run_tests() {
   bctils_cli_compile "examplecli5" --source
   expect_complete_compreply "examplecli5 " "c8 c9 c10"
 
+  current_suite "include other source files"
+  __bctils_test_i_was_sourced=0
+  printf '__bctils_test_i_was_sourced=42' > "/tmp/__bctils_source_include.sh"
+  expect_cmd "not sourced yet" test "$__bctils_test_i_was_sourced" == 0
+  bctils_cli_register "examplecli6"
+  bctils_cli_add      "examplecli6" cfg "INCLUDE_SOURCE=/tmp/__bctils_source_include.sh"
+  bctils_cli_add      "examplecli6" pos --choices="c1"
+  bctils_cli_compile  "examplecli6" --source
+  expect_complete_compreply "examplecli5 " "c8 c9 c10"
+  expect_cmd "now sourced" test "$__bctils_test_i_was_sourced" == 42
+
   #    current_suite "simple options with arguments like --opt val"
   #    bctils_cli_register      "examplecli5"
   #    bctils_cli_add  "examplecli5" "--key" --choices="val1 val2"
@@ -130,6 +141,7 @@ run_tests() {
   #    expect_complete_compreply   "examplecli5 " "--key"
   #    expect_complete_compreply   "examplecli5 --key " "val1 val2"
 
+  current_suite "exclusive options --vanilla --chocolate"
   current_suite "complete option value like --opt=value"
   current_suite "add flag to auto add = if only one arg option left and it requires an argument"
   current_suite "complete single -s type options like -f filepath"
