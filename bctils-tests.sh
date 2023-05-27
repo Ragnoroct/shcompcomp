@@ -132,13 +132,12 @@ run_tests() {
   bctils_cli_add "examplecli6" cfg "INCLUDE_SOURCE=/tmp/__bctils_source_include.sh"
   bctils_cli_add "examplecli6" pos --choices="c1"
   bctils_cli_compile "examplecli6" --source
-  expect_complete_compreply "examplecli5 " "c8 c9 c10"
   expect_cmd "now sourced" test "$__bctils_test_i_was_sourced" == 42
 
   current_suite "simple options with arguments like --opt val"
   bctils_cli_register "examplecli7"
-  bctils_cli_add "examplecli7" opt "--key" --choices="val1 val2"
-  bctils_cli_compile "examplecli7"
+  bctils_cli_add      "examplecli7" opt "--key" --choices="val1 val2"
+  bctils_cli_compile  "examplecli7" --source
   expect_complete_compreply "examplecli7 " "--key"
   expect_complete_compreply "examplecli7 --key " "val1 val2"
 
@@ -399,6 +398,13 @@ complete_cmd_str() {
   local input_line="$1"
   declare -g complete_cmd_str_result
 
+  # fixes: "compopt: not currently executing completion function"
+  # allows compopt calls without giving the cmdname arg
+  # compopt +o nospace instead of compopt +o nospace mycommand
+  compopt () {
+    builtin compopt "$@" "$__bctilstest_compopt_current_cmd"
+  }
+
   IFS=', ' read -r -a comp_words <<<"$input_line"
   if [[ "$input_line" =~ " "$ ]]; then comp_words+=(""); fi
 
@@ -408,9 +414,12 @@ complete_cmd_str() {
   COMP_CWORD="$((${#comp_words[@]} - 1))"
   COMP_POINT="$(("${#input_line}" + 0))"
 
-  # shellcheck disable=SC2091
-  "$(complete -p "$cmd_name" | sed "s/.*-F \\([^ ]*\\) .*/\\1/")" &>/tmp/bashcompletils.out
+  complete_func="$(complete -p "$cmd_name" | awk '{print $(NF-1)}')"
+  __bctilstest_compopt_current_cmd="$cmd_name"
+  "$complete_func" &>/tmp/bashcompletils.out
   complete_cmd_str_result="${COMPREPLY[*]}"
+  __bctilstest_compopt_current_cmd=""
+  unset compopt
 }
 
 expect_complete_compreply() {
@@ -423,23 +432,10 @@ expect_complete_compreply() {
   fi
 
   log "==== $test_name ===="
-
-  IFS=', ' read -r -a comp_words <<<"$input_line"
-  if [[ "$input_line" =~ " "$ ]]; then comp_words+=(""); fi # append empty space if ends in space
-  comp_line="$input_line"
-  comp_point=$(("${#input_line}" + 0))
-  comp_cword=$((${#comp_words[@]} - 1))
-  cmd_name="${comp_words[0]}"
-
-  COMP_LINE="$comp_line"
-  COMP_WORDS=("${comp_words[@]}")
-  COMP_CWORD="$comp_cword"
-  COMP_POINT="$comp_point"
-  # shellcheck disable=SC2091
-  "$(complete -p "$cmd_name" | sed "s/.*-F \\([^ ]*\\) .*/\\1/")" &>/tmp/bashcompletils.out
+  complete_cmd_str "$input_line"
+  actual_reply="${COMPREPLY[*]}"
   output=$(cat /tmp/bashcompletils.out)
 
-  actual_reply="${COMPREPLY[*]}"
   if [[ "$actual_reply" != "$expected_reply" ]]; then
     fail_test "$test_name"
     echo "actual   : '$actual_reply'"
@@ -489,13 +485,14 @@ else
     fi
 
     __bctils_test_run_test_script
-    echo "waiting for changes..."
   }
 
   __bctils_test_run_test_script() {
     BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" \
     TEST_RUN_MODE="RUN_TESTS_ONCE" \
     bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests failed${NC}"; }
+    echo "waiting for changes..."
+    echo "--------"
   }
 
   __bctilstest_kill_other_procs () {
