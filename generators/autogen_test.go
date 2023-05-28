@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSimpleArgumentParser(t *testing.T) {
+func TestSimpleArgument(t *testing.T) {
 	expectedArgs := dedent(`
 		bctils_cli_add examplecli pos --choices="c1 c2 c3"
 		bctils_cli_add examplecli pos --choices="c4 c5 c6"
@@ -18,12 +18,32 @@ func TestSimpleArgumentParser(t *testing.T) {
 		parser.add_argument("arg1", choices=["c1", "c2", "c3"])
 		parser.add_argument("arg2", choices=["c4", "c5", "c6"])
 	`))
+	expectEqual(t, expectedArgs, actualArgs, "")
+}
 
-	if actualArgs != expectedArgs {
+func TestSimpleOption(t *testing.T) {
+	expectedArgs := dedent(`
+		bctils_cli_add examplecli opt "--help"
+	`)
+	actualArgs := parseSrc(
+		"examplecli",
+		dedent(`
+		from argparse import ArgumentParser
+		parser = ArgumentParser()
+		parser.add_argument("--help")
+	`))
+	expectEqual(t, expectedArgs, actualArgs, "")
+}
+
+func expectEqual(t *testing.T, expected string, actual string, msg string) {
+	if msg == "" {
+		msg = "strings are not equal"
+	}
+	if actual != expected {
 		t.Fatalf(
-			"%s\nactual:\n'''\n%s'''\nexpected:\n'''\n%s'''", "output doesn't equal expected",
-			actualArgs,
-			expectedArgs,
+			"%s\nactual:\n'''\n%s'''\nexpected:\n'''\n%s'''", msg,
+			actual,
+			expected,
 		)
 	}
 }

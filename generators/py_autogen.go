@@ -58,7 +58,7 @@ func getArgumentOperations(root *sitter.Node, cliName string, parserVarName stri
 				for curArgNode != nil {
 					if curArgNode.Type() == "string" {
 						// args
-						pyArgs = append(pyArgs, curArgNode.Content(src))
+						pyArgs = append(pyArgs, chompQuotes(curArgNode.Content(src)))
 					} else if curArgNode.Type() == "keyword_argument" {
 						// kwargs
 						pyKey := curArgNode.ChildByFieldName("name").Content(src)
@@ -84,6 +84,8 @@ func getArgumentOperations(root *sitter.Node, cliName string, parserVarName stri
 
 				if strings.HasPrefix(pyArgs[0], "-") {
 					// opt
+					addOp := fmt.Sprintf(`bctils_cli_add %s opt "%s"`, cliName, pyArgs[0])
+					operations = append(operations, addOp)
 				} else {
 					// pos
 					addOp := fmt.Sprintf("bctils_cli_add %s pos", cliName)
