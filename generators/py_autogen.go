@@ -6,6 +6,7 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
 	"log"
+	"strings"
 )
 
 var lang *sitter.Language
@@ -22,20 +23,17 @@ func parseSrc(cliName string, srcStr string) string {
 	tree, _ := parser.ParseCtx(context.Background(), nil, src)
 	root := tree.RootNode()
 
-	fmt.Println(root.String())
 	parserVarName := getParserVarName(root, src)
-	fmt.Printf("%s = ArgumentParser()\n", parserVarName)
 
-	getArgumentOperations(root, parserVarName, src)
+	operations := getArgumentOperations(root, cliName, parserVarName, src)
 
-	return "bob\n"
+	return strings.Join(operations, "\n") + "\n"
 }
 
-func getArgumentOperations(root *sitter.Node, parserVarName string, src []byte) []string {
+func getArgumentOperations(root *sitter.Node, cliName string, parserVarName string, src []byte) []string {
+	var operations []string
 	patternArgumentParser := `(
-		call
-			function: (identifier) @func-name
-			(#match? @func-name "^(add_argument)$")
+		(call function: (attribute object: (identifier))) @parser-method-call
 	)`
 
 	q, err := sitter.NewQuery([]byte(patternArgumentParser), lang)
@@ -51,11 +49,62 @@ func getArgumentOperations(root *sitter.Node, parserVarName string, src []byte) 
 
 		m = qc.FilterPredicates(m, src)
 		for _, c := range m.Captures {
-			fmt.Printf("found match: %s", c.Node.Content(src))
+			objName := c.Node.ChildByFieldName("function").ChildByFieldName("object").Content(src)
+			if objName == parserVarName {
+				nodeArguments := c.Node.ChildByFieldName("arguments")
+				curArgNode := nodeArguments.NamedChild(0)
+				var pyArgs []string
+				pyKwargs := make(map[string]interface{})
+				for curArgNode != nil {
+					if curArgNode.Type() == "string" {
+						// args
+						pyArgs = append(pyArgs, curArgNode.Content(src))
+					} else if curArgNode.Type() == "keyword_argument" {
+						// kwargs
+						pyKey := curArgNode.ChildByFieldName("name").Content(src)
+						valueNode := curArgNode.ChildByFieldName("value")
+						if valueNode.Type() == "list" {
+							// list of strings
+							var pyList []string
+							for i := 0; valueNode.NamedChild(i) != nil; i++ {
+								elemNode := valueNode.NamedChild(i)
+								if elemNode.Type() == "string" {
+									pyList = append(pyList, chompQuotes(valueNode.NamedChild(i).Content(src)))
+								} else {
+									panic("not implemented for type " + elemNode.Type())
+								}
+							}
+							pyKwargs[pyKey] = pyList
+						} else {
+							panic("don't know how to handle value type " + valueNode.Type())
+						}
+					}
+					curArgNode = curArgNode.NextNamedSibling()
+				}
+
+				if strings.HasPrefix(pyArgs[0], "-") {
+					// opt
+				} else {
+					// pos
+					addOp := fmt.Sprintf("bctils_cli_add %s pos", cliName)
+
+					// --choices
+					if _, ok := pyKwargs["choices"]; ok {
+						switch v := pyKwargs["choices"].(type) {
+						case []string:
+							addOp += fmt.Sprintf(` --choices="%s"`, strings.Join(v, " "))
+						default:
+							panic(fmt.Sprintf("cannot handle type %T", v))
+						}
+					}
+
+					operations = append(operations, addOp)
+				}
+			}
 		}
 	}
 
-	return make([]string, 0)
+	return operations
 }
 
 func getParserVarName(root *sitter.Node, src []byte) string {
@@ -93,4 +142,14 @@ func check(e error) {
 	if e != nil {
 		panic(e)
 	}
+}
+
+func chompQuotes(str string) string {
+	var found bool
+	if str, found = strings.CutPrefix(str, "'"); found {
+		str, _ = strings.CutSuffix(str, "'")
+	} else if str, found = strings.CutPrefix(str, "\""); found {
+		str, _ = strings.CutSuffix(str, "\"")
+	}
+	return str
 }
