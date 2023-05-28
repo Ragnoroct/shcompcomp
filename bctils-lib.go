@@ -1,8 +1,10 @@
 package main
 
 import (
+	generators "bctils/generators"
 	"bufio"
 	_ "embed"
+	"flag"
 	"log"
 	"os"
 	"regexp"
@@ -49,17 +51,28 @@ type templateData struct {
 	ParserNames  map[string]string
 }
 
+type cliFlags struct {
+	autogenSrcFile string
+	autogenLang    string
+}
+
 func main() {
-	// logger
-	f, err := os.OpenFile("/home/willy/mybash.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
-	check(err)
-	defer func(f *os.File) {
-		err := f.Close()
-		check(err)
-	}(f)
-	log.SetOutput(f)
-	log.SetFlags(0)
-	log.SetPrefix(time.Now().Local().Format("[15:04:05.000]") + " [bctils] ")
+	logCleanup := setupLogger()
+	defer logCleanup()
+	//errlog := log.New(os.Stderr, "", 0)
+
+	var flags = cliFlags{}
+	flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
+	flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
+	flag.Parse()
+
+	if flags.autogenLang == "py" {
+		generators.GeneratePython(flags.autogenSrcFile)
+		os.Exit(0)
+	} else if flags.autogenLang != "" {
+		//errlog.Printf("unknown lang '%s' for autogen", flags.autogenLang)
+		os.Exit(1)
+	}
 
 	cliName := os.Args[1]
 	cliNameClean := regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(cliName, "")
@@ -222,6 +235,18 @@ func main() {
 	err = tmpl.Execute(os.Stdout, data)
 	if err != nil {
 		panic(err)
+	}
+}
+
+func setupLogger() func() {
+	f, err := os.OpenFile("/home/willy/mybash.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
+	check(err)
+	log.SetOutput(f)
+	log.SetFlags(0)
+	log.SetPrefix(time.Now().Local().Format("[15:04:05.000]") + " [bctils] ")
+
+	return func() {
+		check(f.Close())
 	}
 }
 
