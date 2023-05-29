@@ -54,7 +54,6 @@ run_tests() {
   bctils_cli_compile "examplecli" --source
   expect_compile_success
   expect_complete_compreply "examplecli " "-h --help"
-
   rm -rf "/tmp/bctils_complete_test.sh"
   bctils_cli_register "examplecli"
   bctils_cli_add "examplecli" opt "-h"

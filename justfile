@@ -4,65 +4,72 @@ benchmark:
 test:
   ./bctils-tests.sh
 
-test-generators:
+test-generators test_name="":
   #!/usr/bin/env bash
   proj_dir="$PWD"
 
-  # $1: debounce_by time
-  # $2: file_prefix for lockfiles
-  @debounce () {
-    debounce_by="$1"; shift
-    file_prefix="$1"; shift
-    _d_last_pid="$file_prefix-last-pid"
-    _d_exec_pid="$file_prefix-exec-pid"
-    _d_exec_que="$file_prefix-exec-queue"
+  red="$(tput setaf 1)"
+  green="$(tput setaf 2)"
+  yellow="$(tput setaf 3)"
+  magenta="$(tput setaf 5)"
+  cyan="$(tput setaf 6)"
+  reset="$(printf "%b" "\033[0m")"
 
-    __debounce_pid_exit () {
-      while true; do
-        if [[ ! -f "$_d_exec_pid" && -z "$(cat "$_d_exec_que" 2>/dev/null)" ]]; then
-          break
-        fi
-        sleep .1
-      done
-    }
-    trap '__debounce_pid_exit' EXIT
-
-    (
-      echo "$BASHPID" > "$_d_last_pid"
-      sleep "$debounce_by"
-      if [[ "$BASHPID" == "$(cat "$_d_last_pid")" ]]; then
-        echo "$BASHPID" > "$_d_exec_que"
-        while true; do
-          if [[ ! -f "$_d_exec_pid" && "$BASHPID" == "$(head -n 1 "$_d_exec_que")" ]]; then
-            sed -i '1d' "$_d_exec_que"
-            break
-          fi
-          sleep 0.1
-        done
-
-        echo "$BASHPID" > "$_d_exec_pid"
-        "$@"
-        rm -rf "$_d_exec_pid"
-      fi
-    ) &
-  }
-
-  MAGENTA='\033[0;35m'
-  NC='\033[0m'
+  log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
   run_tests () {
-    go test -v "./generators"
-    echo -e "${MAGENTA}DONE${NC}: $(date '+%T.%3N')"
+    test_call=(go test -v "./generators")
+    if [[ -n "{{test_name}}" ]]; then
+      test_call+=(-run {{test_name}})
+    fi
+    echo "${test_call[*]}"
+    "${test_call[@]}" \
+    | sed s/FAIL/"$red&$reset"/i \
+    | sed s/PASS/"$green&$reset"/i \
+    | sed s/WARNING/"$yellow&$reset"/i \
+    ;
+    if [[ "${PIPESTATUS[0]}" == 2 ]]; then
+      log "!!! go compilation error"
+    fi
+    echo -e "${magenta}DONE${reset}: $(date '+%T.%3N')"
   }
 
   run_tests
   inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
-  --exclude "$proj_dir\/((compile|build|.git|.idea)\/?|.*(\.lock|~|\.log))$" |
+  --exclude "$proj_dir\/((compile|build|.git|.idea)\/?|.*(\.lock|~|\.log))$" | \
+  inotifywait_debounce 100 | \
   while read -r dir events dir_file; do
-    @debounce "0.1" "/tmp/bctils-autogen-test" run_tests
+    run_tests
   done
 
+
+
+  run_tests () {
+    test_call=(go test -v "./generators")
+    if [[ -n "{{test_name}}" ]]; then
+      test_call+=(-run {{test_name}})
+    fi
+    echo "${test_call[*]}"
+    "${test_call[@]}"
+    echo -e "${magenta}DONE${reset}: $(date '+%T.%3N')"
+  }
 logs:
-  tail -f ~/mybash.log
+  #!/usr/bin/env bash
+  red="$(tput setaf 1)"
+  green="$(tput setaf 2)"
+  yellow="$(tput setaf 3)"
+  blue="$(tput setaf 4)"
+  magenta="$(tput setaf 5)"
+  cyan="$(tput setaf 6)"
+  reset="$(printf "%b" "\033[0m")"
+  tail -f ~/mybash.log \
+  | sed -u s/"go compilation error"/"$red&$reset"/i \
+  | sed -u s/"RUNNING TESTS"/"$magenta&$reset"/i \
+  | sed -u s/"RESULTS FAIL"/"$red&$reset"/i \
+  | sed -u s/"FAIL"/"$red&$reset"/i \
+  | sed -u s/"=== TEST .*"/"$cyan&$reset"/i \
+  | sed -u s/PASS/"$green&$reset"/i \
+  | sed -u s/WARNING/"$yellow&$reset"/i \
+  ;
 
 @build:
   mkdir -p "build"

@@ -62,6 +62,7 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
 
     # current parser
     # todo: need a way to ensure subparser match isn't an arg or option value
+    # todo: optimize based on "subparsers are invoked based on the value of the first positional argument..."
     if [[ "$i" -le "$cword_index" ]]; then
       subparser_candidate="${current_parser}${word}"
       if [[ -n "${subparsers[$subparser_candidate]}" ]]; then
