@@ -29,15 +29,14 @@ func TestAutoGen(t *testing.T) {
 	runSubtest(t, "simple subparser", func(t *testing.T) {
 		expectedArgs := dedent(`
 			bctils_cli_add examplecli pos --choices="sub-cmd-name"
-			bctils_cli_add examplecli opt "--help"
+			bctils_cli_add examplecli opt "--some-way"
 			bctils_cli_add examplecli pos -p="sub-cmd-name" --choices="c1 c2 c3"
 		`)
 		actualArgs := parseSrc(
-			"examplecli",
 			dedent(`
 			from argparse import ArgumentParser
 			parser = ArgumentParser()
-			parser.add_argument("--help")
+			parser.add_argument("--some-way")
 			subparsers = parser.add_subparsers()
 			parser_cmd = subparsers.add_parser("sub-cmd-name")
 			parser_cmd.add_argument("arg1", choices=["c1", "c2", "c3"])

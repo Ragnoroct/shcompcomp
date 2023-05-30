@@ -5,6 +5,7 @@ import (
 	"bufio"
 	_ "embed"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"regexp"
@@ -59,22 +60,32 @@ type cliFlags struct {
 func main() {
 	logCleanup := setupLogger()
 	defer logCleanup()
-	//errlog := log.New(os.Stderr, "", 0)
 
 	var flags = cliFlags{}
 	flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
 	flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
 	flag.Parse()
+	cliName := flag.Arg(0)
 
+	var operationsStr string
 	if flags.autogenLang == "py" {
-		generators.GeneratePython(flags.autogenSrcFile)
-		os.Exit(0)
-	} else if flags.autogenLang != "" {
-		//errlog.Printf("unknown lang '%s' for autogen", flags.autogenLang)
+		operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile)
+	} else if flags.autogenLang == "" {
+		operationsStr = ""
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			argLine := scanner.Text()
+			operationsStr += argLine + "\n"
+		}
+	} else {
+		fmt.Printf("error: unknown lang '%s' for autogen", flags.autogenLang)
 		os.Exit(1)
 	}
 
-	cliName := os.Args[1]
+	parseOperations(cliName, operationsStr)
+}
+
+func parseOperations(cliName string, operationsStr string) {
 	cliNameClean := regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(cliName, "")
 
 	data := templateData{
@@ -90,9 +101,12 @@ func main() {
 
 	positionalCounter := map[string]int{}
 
+	lines := strings.Split(operationsStr, "\n")
 	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		argLine := scanner.Text()
+	for _, argLine := range lines {
+		if strings.TrimSpace(argLine) == "" {
+			continue
+		}
 
 		// https://stackoverflow.com/a/47489825
 		quoted := false
@@ -202,9 +216,6 @@ func main() {
 			delete(data.Positionals, k)
 		}
 	}
-
-	log.Printf("options: %v", data.Options)
-	log.Printf("positionals: %v", data.Positionals)
 
 	// new template feature '\}}' chomps next newline rather than trim all whitespace '-}}'
 	pattern := regexp.MustCompile(`(^|\n)([\t\r ]+)(\{\{.*)\\(}}[\t\r ]*)\n(.*)($|\n)`)
@@ -324,8 +335,6 @@ func BashAssoc(assoc map[string]string, indent int, quoteKey bool) string {
 	if len(line) > 0 {
 		arrayLines = append(arrayLines, line)
 	}
-	log.Printf("assoc: %v", assoc)
-	log.Printf("arrayLines: %v", arrayLines)
 
 	if len(arrayLines) == 0 {
 		return "()"

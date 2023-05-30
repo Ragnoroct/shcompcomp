@@ -111,7 +111,46 @@ bctils_cli_compile () {
   if ! printf '%s\n' "${bctils_data_args[@]}" | bctils "$cli_name" > "$out_file"
   then
     # shellcheck disable=SC2034
-    bctils_err="bctils compile failed in binary"
+    bctils_err="bctils compile failed"
+    return
+  fi
+
+  if [[ "${options["source"]}" == 1 ]]; then
+    log "sourcing $out_file"
+    # shellcheck disable=SC1090
+    source "$out_file"
+  fi
+}
+
+bctils_autogen () {
+  local -A options=()
+  local -a args=("$0")
+  if ! TEMP=$(getopt -o '-h' --longoptions 'source,lang:' -- "$@"); then echo "failed to parse args"; exit 1; fi
+  eval set -- "$TEMP"; unset TEMP
+  while true; do
+    case "$1" in
+      "--lang")
+        options["lang"]="$2"; shift 2 ;;
+      "--source")
+        options["source"]=1
+        shift 1
+        ;;
+      "--") break ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+
+  lang="${options["lang"]}"
+  files=("${args[@]:1}")
+  cli_name="$(basename "${files[1]}")"
+  out_file="$BCTILS_COMPILE_DIR/${cli_name}_complete.sh"
+
+  log "$cli_name : ${lang} autogen for files : ${files[*]}"
+  mkdir -p "$(dirname "$out_file")"
+  if ! bctils -autogen-lang py -autogen-src "${files[0]}" "$cli_name" > "$out_file"
+  then
+    # shellcheck disable=SC2034
+    bctils_err="bctils autogen failed"
     return
   fi
 

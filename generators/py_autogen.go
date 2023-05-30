@@ -5,17 +5,22 @@ import (
 	"fmt"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
-	"log"
+	"os"
 	"strings"
 )
 
 var lang *sitter.Language
 
-func GeneratePython(srcFile string) {
-	log.Printf("generating for: %s", srcFile)
+func GeneratePythonOperations(srcFile string) string {
+	content, err := os.ReadFile(srcFile)
+	if err != nil {
+		fmt.Println("failed to read file: " + srcFile)
+		os.Exit(1)
+	}
+	return parseSrc(string(content))
 }
 
-func parseSrc(cliName string, srcStr string) string {
+func parseSrc(srcStr string) string {
 	lang = python.GetLanguage()
 	src := []byte(srcStr)
 	parser := sitter.NewParser()
@@ -25,7 +30,7 @@ func parseSrc(cliName string, srcStr string) string {
 
 	parserVarName := getParserVarName(root, src)
 
-	operations := getArgumentOperations(root, cliName, pyIdentifier(parserVarName), src)
+	operations := getArgumentOperations(root, pyIdentifier(parserVarName), src)
 
 	return strings.Join(operations, "\n") + "\n"
 }
@@ -54,7 +59,7 @@ type pyArgumentParserGraph struct {
 	subparsersParents map[pyIdentifier]*pyParser
 }
 
-func getArgumentOperations(root *sitter.Node, cliName string, pyBaseParser pyIdentifier, src []byte) []string {
+func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []byte) []string {
 	patternArgumentParser := `(
 		(call function: (attribute object: (identifier))) @parser-method-call
 	)`
@@ -96,12 +101,6 @@ func getArgumentOperations(root *sitter.Node, cliName string, pyBaseParser pyIde
 				assignmentIdentifier = pyIdentifier(node.Content(src))
 			}
 
-			if assignmentIdentifier != "" {
-				log.Printf("%s = %s.%s %v", assignmentIdentifier, callObjectIdentifier, callFuncName, callArguments)
-			} else {
-				log.Printf("%s.%s %v", callObjectIdentifier, callFuncName, callArguments)
-			}
-
 			if parentParser, ok := callGraph.subparsersParents[callObjectIdentifier]; ok {
 				switch callFuncName {
 				case "add_parser":
@@ -129,11 +128,9 @@ func getArgumentOperations(root *sitter.Node, cliName string, pyBaseParser pyIde
 					}
 				}
 				callGraph.subparsersParents[callObjectIdentifier] = parentParser
-				log.Printf("parser %s: subparsers length %d", parentParser.parserName, len(parentParser.subParserList))
 			}
 
 			if parser, ok := callGraph.parsers[callObjectIdentifier]; ok {
-				log.Printf("parser 2 %s: subparsers length %d", parser.parserName, len(parser.subParserList))
 				switch callFuncName {
 				case "add_subparsers":
 					if assignmentIdentifier != "" {
@@ -159,8 +156,6 @@ func getArgumentOperations(root *sitter.Node, cliName string, pyBaseParser pyIde
 		}
 		if len(subparserNames) > 0 {
 			var operation []string
-			operation = append(operation, "bctils_cli_add")
-			operation = append(operation, cliName)
 			operation = append(operation, "pos")
 			operation = append(operation, fmt.Sprintf(`--choices="%s"`, strings.Join(subparserNames, " ")))
 			operations = append(operations, strings.Join(operation, " "))
@@ -175,9 +170,6 @@ func getArgumentOperations(root *sitter.Node, cliName string, pyBaseParser pyIde
 			var argumentName string
 			args := addArgumentCall.args.args
 			kwargs := addArgumentCall.args.kwargs
-
-			operation = append(operation, "bctils_cli_add")
-			operation = append(operation, cliName)
 
 			if str, ok := args[0].(string); ok {
 				argumentName = str
@@ -210,8 +202,7 @@ func getArgumentOperations(root *sitter.Node, cliName string, pyBaseParser pyIde
 						case string:
 							choicesStr += v
 						default:
-							log.Printf("cannot handle choice that isn't a string : %T", v)
-							break
+							panic(fmt.Sprintf("cannot handle choice that isn't a string : %T", v))
 						}
 					}
 					operation = append(operation, fmt.Sprintf(`--choices="%s"`, choicesStr))

@@ -14,7 +14,7 @@ NC='\033[0m'
 cd "$proj_dir" || exit
 source "/usr/share/bash-completion/bash_completion"
 source "./bctils-lib.sh" || {
-  echo -e "${RED}ERROR: sourcing bctils-lib.sh failed$NC"
+  echo -e "${RED}ERROR: sourcing bctils-lib.sh FAIL$NC"
   exit 1
 }
 cd "$curr_dir" || exit
@@ -141,6 +141,32 @@ run_tests() {
   expect_complete_compreply "examplecli7 " "--key --tree"
   expect_complete_compreply "examplecli7 --key " "val1 val2"
   expect_complete_compreply "examplecli7 --tree " "c8 c9 c10"
+
+  current_suite "py_autogen simple end to end test"
+  mkdir -p "/tmp/bctils-testing-simple-parser"
+  cat - > "/tmp/bctils-testing-simple-parser/examplecli8.py" <<EOF
+from argparse import ArgumentParser
+parser = ArgumentParser()
+parser.add_argument("--some-way2")
+subparsers = parser.add_subparsers()
+parser_cmd = subparsers.add_parser("sub-cmd-name")
+parser_cmd.add_argument("arg1", choices=["c1", "c2", "c3"])
+EOF
+  chmod u+x "/tmp/bctils-testing-simple-parser/examplecli8.py"
+  bctils_autogen "/tmp/bctils-testing-simple-parser/examplecli8.py" --lang=py --source
+  expect_cmd "python script is runnable" python "/tmp/bctils-testing-simple-parser/examplecli8.py"
+#  path_old="$PATH"
+#  PATH="$PATH:/tmp/bctils-testing-simple-parser/examplecli8.py"
+  expect_complete_compreply "examplecli8.py " "sub-cmd-name --some-way2"
+#  PATH="$path_old"
+
+  current_suite "bctils_autogen can choose out file"
+  current_suite "bctils_autogen reloads on changes"
+  current_suite "bctils_autogen caches on md5 in variable"
+  current_suite "bctils_autogen caches on md5 in file"
+
+  current_suite "py_autogen detect disabling --help/-h"
+  current_suite "bctils_autogen specify out file"
 
   current_suite "exclusive options --vanilla --chocolate"
   current_suite "complete option value like --opt=value"
@@ -346,11 +372,12 @@ run_benchmarks() {
 
 expect_compile_success() {
   if [[ -n "$bctils_err" ]]; then
-    fail_test "compile failed : $bctils_err"
+    fail_test "compile FAIL : $bctils_err"
   fi
 }
 
 expect_cmd() {
+  print_suite
   local msg="$1"
   shift
   local cmd="$1"
@@ -381,8 +408,8 @@ fail_test() {
     echo -e "$current_suite_name"
     current_suite_printed=1
   fi
-  echo -e "${RED}FAILED${NC}: '$1'"
-  all_result="${RED}FAILED${NC}"
+  echo -e "${RED}FAIL${NC}: '$1'"
+  all_result="${RED}FAIL${NC}"
   fail_count=$((fail_count + 1))
   fail_count_str=" $fail_count"
 }
@@ -392,7 +419,7 @@ pass_test() {
     echo -e "$current_suite_name"
     current_suite_printed=1
   fi
-  echo -e "${GREEN}PASSED${NC}: '$1'"
+  echo -e "${GREEN}PASS${NC}: '$1'"
 }
 
 complete_cmd_str() {
@@ -444,10 +471,10 @@ expect_complete_compreply() {
     if [[ "${#output}" -gt 0 ]]; then
       echo "$output"
     fi
-    log "==== FAILED ===="
+    log "==== FAIL ===="
   else
     pass_test "$test_name"
-    log "==== PASSED ===="
+    log "==== PASS ===="
   fi
 }
 
@@ -475,11 +502,11 @@ else
       echo "file change: $dir_file $events"
     fi
 
-    if [[ "$events" =~ .*"CLOSE_WRITE".* ]] && [[ "$dir_file" == "bctils-lib.go" || "$dir_file" == "complete-template.txt" ]]; then
+    if [[ "$events" =~ .*"CLOSE_WRITE".* ]] && [[ "$dir_file" =~ ".go"$ || "$dir_file" == "complete-template.txt" ]]; then
       echo "rebuilding golang binary..."
       time_start=$(($(date +%s%N) / 1000000))
       if ! just build; then
-        echo -e "${RED}ERROR: bctils failed to build${NC}"
+        echo -e "${RED}ERROR: bctils FAIL to build${NC}"
         return
       fi
       BCTILS_COMPILE_TIME=$((($(date +%s%N) / 1000000) - time_start))
@@ -491,7 +518,7 @@ else
   __bctils_test_run_test_script() {
     BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" \
     TEST_RUN_MODE="RUN_TESTS_ONCE" \
-    bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests failed${NC}"; }
+    bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests FAIL${NC}"; }
     echo "waiting for changes..."
     echo "--------"
   }
@@ -537,7 +564,7 @@ else
       BCTILS_COMPILE_TIME=$((($(date +%s%N) / 1000000) - time_start))
       return 0
     else
-      echo -e "${RED}ERROR: bctils failed to build${NC}"
+      echo -e "${RED}ERROR: bctils FAIL to build${NC}"
       return 1
     fi
   }
