@@ -155,10 +155,9 @@ EOF
   chmod u+x "/tmp/bctils-testing-simple-parser/examplecli8.py"
   bctils_autogen "/tmp/bctils-testing-simple-parser/examplecli8.py" --lang=py --source
   expect_cmd "python script is runnable" python "/tmp/bctils-testing-simple-parser/examplecli8.py"
-#  path_old="$PATH"
-#  PATH="$PATH:/tmp/bctils-testing-simple-parser/examplecli8.py"
   expect_complete_compreply "examplecli8.py " "sub-cmd-name --some-way2"
-#  PATH="$path_old"
+  expect_complete_compreply "examplecli8.py --some" "--some-way2"
+  expect_complete_compreply "examplecli8.py sub-cmd-name " "c1 c2 c3"
 
   current_suite "bctils_autogen can choose out file"
   current_suite "bctils_autogen reloads on changes"

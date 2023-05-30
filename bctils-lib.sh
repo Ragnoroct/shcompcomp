@@ -132,17 +132,16 @@ bctils_autogen () {
       "--lang")
         options["lang"]="$2"; shift 2 ;;
       "--source")
-        options["source"]=1
-        shift 1
-        ;;
+        options["source"]=1; shift ;;
       "--") break ;;
       *) args+=("$1"); shift ;;
     esac
   done
 
+
   lang="${options["lang"]}"
   files=("${args[@]:1}")
-  cli_name="$(basename "${files[1]}")"
+  cli_name="$(basename "${files[0]}")"
   out_file="$BCTILS_COMPILE_DIR/${cli_name}_complete.sh"
 
   log "$cli_name : ${lang} autogen for files : ${files[*]}"
