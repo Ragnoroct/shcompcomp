@@ -196,6 +196,8 @@ EOF
   current_suite "bctils_autogen caches on md5 in variable"
   current_suite "bctils_autogen caches on md5 in file"
 
+  current_suite "positionals without hints are recognized countwise"
+
   current_suite "py_autogen detect disabling --help/-h"
   current_suite "bctils_autogen specify out file"
 

@@ -87,6 +87,44 @@ func TestAutoGen(t *testing.T) {
 		)
 	})
 
+	runSubtest(t, "ignores other methods", func(t *testing.T) {
+		expectOperations(
+			t,
+			`
+			from argparse import ArgumentParser
+			parser = ArgumentParser()
+			parser.add_argument("arg1", choices=["c1", "c2", "c3"])
+			parser.add_argument("arg2", choices=["c4", "c5", "c6"])
+			parser.add_argument_ignored("arg3", choices=["c7", "c8", "c9"])
+			`,
+			`
+			pos --choices="c1 c2 c3"
+			pos --choices="c4 c5 c6"
+			`,
+		)
+	})
+
+	runSubtest(t, "add subparser without left operand still works", func(t *testing.T) {
+		expectOperations(
+			t,
+			`
+			parser = ArgumentParser()
+			subparsers = parser.add_subparsers(help="sub-command help", dest="command", required=True)
+			subparsers.add_parser("pio")
+			parser_release_freeze = subparsers.add_parser("release-freeze")
+			parser_release_freeze.add_argument("version", help="example: 2.14.0")
+			parser_release_freeze.add_argument("part", help="example: minor", nargs="?", choices=["major", "minor", "patch"], default="minor")
+			`,
+			`
+			pos --choices="pio release-freeze"
+			pos -p="release-freeze"
+			pos -p="release-freeze" --choices="major minor patch"
+			`,
+		)
+	})
+
+	runSubtest(t, "order of operations is always the same", nil)
+
 	runSubtest(t, "options with values", nil)
 	runSubtest(t, "options with values", nil)
 	runSubtest(t, "allow closures through comments", nil)

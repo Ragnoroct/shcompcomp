@@ -57,6 +57,7 @@ type pyParser struct {
 }
 
 type pyArgumentParserGraph struct {
+	parserSequence    []*pyParser
 	parsers           map[pyIdentifier]*pyParser
 	subparsersParents map[pyIdentifier]*pyParser
 }
@@ -70,13 +71,15 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 		parsers:           map[pyIdentifier]*pyParser{},
 		subparsersParents: map[pyIdentifier]*pyParser{},
 	}
-	callGraph.parsers[pyBaseParser] = &pyParser{
+	baseParser := &pyParser{
 		parserIdentifier:    pyBaseParser,
 		parserName:          "",
 		subParsersIdentifer: "",
 		subParserList:       []*pyParser{},
 		addArgumentCalls:    []pyAddArgumentCall{},
 	}
+	callGraph.parsers[pyBaseParser] = baseParser
+	callGraph.parserSequence = append(callGraph.parserSequence, baseParser)
 
 	q, err := sitter.NewQuery([]byte(patternArgumentParser), lang)
 	check(err)
@@ -97,6 +100,15 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 			functionNode := callNode.ChildByFieldName("function")
 			callObjectIdentifier := pyIdentifier(functionNode.ChildByFieldName("object").Content(src))
 			callFuncName := functionNode.ChildByFieldName("attribute").Content(src)
+
+			switch callFuncName {
+			case "add_parser":
+			case "add_argument":
+			case "add_subparsers":
+			default:
+				continue
+			}
+
 			callArguments := getPyArguments(callNode, src)
 
 			if node = callNode.Parent().ChildByFieldName("left"); node != nil {
@@ -106,30 +118,29 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 			if parentParser, ok := callGraph.subparsersParents[callObjectIdentifier]; ok {
 				switch callFuncName {
 				case "add_parser":
-					if assignmentIdentifier != "" {
-						var parserName string
-						if len(callArguments.args) == 0 {
-							panic("parser name not provided in args")
-						}
-						if str, ok := callArguments.args[0].(string); ok {
-							parserName = str
-						} else {
-							panic("parser name is not a string")
-						}
-
-						// add new parser
-						parserIdentifier := assignmentIdentifier
-						newParser := pyParser{
-							parserIdentifier: parserIdentifier,
-							parserName:       parserName,
-							subParserList:    []*pyParser{},
-							addArgumentCalls: []pyAddArgumentCall{},
-						}
-						callGraph.parsers[assignmentIdentifier] = &newParser
-						parentParser.subParserList = append(parentParser.subParserList, &newParser)
+					var parserName string
+					if len(callArguments.args) == 0 {
+						panic("parser name not provided in args")
 					}
+					if str, ok := callArguments.args[0].(string); ok {
+						parserName = str
+					} else {
+						panic("parser name is not a string")
+					}
+
+					// add new parser
+					parserIdentifier := assignmentIdentifier
+					newParser := pyParser{
+						parserIdentifier: parserIdentifier,
+						parserName:       parserName,
+						subParserList:    []*pyParser{},
+						addArgumentCalls: []pyAddArgumentCall{},
+					}
+					callGraph.parsers[assignmentIdentifier] = &newParser
+					parentParser.subParserList = append(parentParser.subParserList, &newParser)
+					callGraph.parserSequence = append(callGraph.parserSequence, &newParser)
+					callGraph.subparsersParents[callObjectIdentifier] = parentParser
 				}
-				callGraph.subparsersParents[callObjectIdentifier] = parentParser
 			}
 
 			if parser, ok := callGraph.parsers[callObjectIdentifier]; ok {
@@ -150,7 +161,7 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 	}
 
 	var operations []string
-	for _, parser := range callGraph.parsers {
+	for _, parser := range callGraph.parserSequence {
 		// add --choices for subparser names
 		subparserNames := make([]string, len(parser.subParserList))
 		for i, subparser := range parser.subParserList {
@@ -256,6 +267,8 @@ func getPyArguments(callNode *sitter.Node, src []byte) pyArguments {
 			value = true
 		case "false":
 			value = false
+		case "none":
+			value = nil
 		default:
 			panicNode(argNode, fmt.Sprintf("unhandled Node.Type() '%s'", argNode.Type()))
 		}
