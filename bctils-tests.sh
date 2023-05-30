@@ -160,6 +160,12 @@ EOF
   expect_complete_compreply "examplecli8.py sub-cmd-name " "c1 c2 c3"
 
   current_suite "bctils_autogen can choose out file"
+  mkdir -p "/tmp/bctils-testing-simple-parser"
+  echo "print('test')" > "/tmp/bctils-testing-simple-parser/examplecli9.py"
+  bctils_autogen "/tmp/bctils-testing-simple-parser/examplecli9.py" --lang=py --source \
+    --outfile="/tmp/bctils-testing-simple-parser/examplecli8.py.bash"
+  expect_cmd "can specify outfile for autogen" test -f "/tmp/bctils-testing-simple-parser/examplecli8.py.bash"
+
   current_suite "bctils_autogen reloads on changes"
   current_suite "bctils_autogen caches on md5 in variable"
   current_suite "bctils_autogen caches on md5 in file"

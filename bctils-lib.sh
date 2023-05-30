@@ -125,10 +125,13 @@ bctils_cli_compile () {
 bctils_autogen () {
   local -A options=()
   local -a args=("$0")
-  if ! TEMP=$(getopt -o '-h' --longoptions 'source,lang:' -- "$@"); then echo "failed to parse args"; exit 1; fi
+  if ! TEMP=$(getopt -o '-h' --longoptions 'source,lang:,outfile:' -- "$@"); then echo "failed to parse args"; exit 1; fi
   eval set -- "$TEMP"; unset TEMP
   while true; do
     case "$1" in
+      "--outfile")
+        echo "setting outfile: $2"
+        options["outfile"]="$2"; shift 2 ;;
       "--lang")
         options["lang"]="$2"; shift 2 ;;
       "--source")
@@ -142,7 +145,7 @@ bctils_autogen () {
   lang="${options["lang"]}"
   files=("${args[@]:1}")
   cli_name="$(basename "${files[0]}")"
-  out_file="$BCTILS_COMPILE_DIR/${cli_name}_complete.sh"
+  out_file="${options[outfile]:-"$BCTILS_COMPILE_DIR/${cli_name}_complete.sh"}"
 
   log "$cli_name : ${lang} autogen for files : ${files[*]}"
   mkdir -p "$(dirname "$out_file")"
