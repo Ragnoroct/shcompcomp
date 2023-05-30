@@ -79,7 +79,7 @@ bctils_cli_compile () {
 
   local -A options=()
   local -a args=()
-  if ! TEMP=$(getopt -o '-h' --longoptions 'source' -- "$@"); then echo "failed to parse args"; exit 1; fi
+  if ! TEMP=$(getopt -o '-h' --longoptions 'source' -- "$@"); then errmsg "failed to parse args"; return 1; fi
   eval set -- "$TEMP"; unset TEMP
   while true; do
     case "$1" in
@@ -123,9 +123,12 @@ bctils_cli_compile () {
 }
 
 bctils_autogen () {
+  local args_verbatim
+  args_verbatim="${FUNCNAME[0]} $(printf " %q" "${@}")"
+
   local -A options=()
   local -a args=("$0")
-  if ! TEMP=$(getopt -o '-h' --longoptions 'source,lang:,outfile:' -- "$@"); then echo "failed to parse args"; exit 1; fi
+  if ! TEMP=$(getopt -o '-h' --longoptions 'source,lang:,outfile:' -- "$@"); then errmsg "failed to parse args"; return 1; fi
   eval set -- "$TEMP"; unset TEMP
   while true; do
     case "$1" in
@@ -141,7 +144,6 @@ bctils_autogen () {
     esac
   done
 
-
   lang="${options["lang"]}"
   files=("${args[@]:1}")
   cli_name="$(basename "${files[0]}")"
@@ -149,7 +151,9 @@ bctils_autogen () {
 
   log "$cli_name : ${lang} autogen for files : ${files[*]}"
   mkdir -p "$(dirname "$out_file")"
-  if ! bctils -autogen-lang py -autogen-src "${files[0]}" "$cli_name" > "$out_file"
+
+  # shellcheck disable=SC2094
+  if ! bctils -autogen-lang py -autogen-src "${files[0]}" -autogen-outfile "$out_file" "$cli_name" "$args_verbatim" > "$out_file"
   then
     # shellcheck disable=SC2034
     bctils_err="bctils autogen failed"

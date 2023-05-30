@@ -3,6 +3,7 @@ package main
 import (
 	generators "bctils/generators"
 	"bufio"
+	"bytes"
 	_ "embed"
 	"flag"
 	"fmt"
@@ -40,21 +41,26 @@ type PositionalList struct {
 }
 
 type Config struct {
-	SourceIncludes []string
+	SourceIncludes      []string
+	ReloadTriggerFiles  []string
+	AutoGenArgsVerbatim string
+	AutoGenOutfile      string
 }
 
 type templateData struct {
-	CliName      string
-	CliNameClean string
-	Config       Config
-	Positionals  map[string]PositionalList
-	Options      map[string]OptionList
-	ParserNames  map[string]string
+	CliName              string
+	CliNameClean         string
+	Config               Config
+	Positionals          map[string]PositionalList
+	Options              map[string]OptionList
+	ParserNames          map[string]string
+	AddOperationsComment string
 }
 
 type cliFlags struct {
 	autogenSrcFile string
 	autogenLang    string
+	autogenOutfile string
 }
 
 func main() {
@@ -64,12 +70,15 @@ func main() {
 	var flags = cliFlags{}
 	flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
 	flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
+	flag.StringVar(&flags.autogenOutfile, "autogen-outfile", "", "outfile location so it can source itself")
 	flag.Parse()
 	cliName := flag.Arg(0)
 
 	var operationsStr string
 	if flags.autogenLang == "py" {
-		operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile)
+		log.Printf("autogenOutfile: %s", flags.autogenOutfile)
+		argsVerbatim := flag.Arg(1)
+		operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile, argsVerbatim, flags.autogenOutfile)
 	} else if flags.autogenLang == "" {
 		operationsStr = ""
 		scanner := bufio.NewScanner(os.Stdin)
@@ -107,6 +116,10 @@ func parseOperations(cliName string, operationsStr string) {
 		if strings.TrimSpace(argLine) == "" {
 			continue
 		}
+		if data.AddOperationsComment != "" {
+			data.AddOperationsComment += "\n"
+		}
+		data.AddOperationsComment += "# " + argLine
 
 		// https://stackoverflow.com/a/47489825
 		quoted := false
@@ -122,22 +135,35 @@ func parseOperations(cliName string, operationsStr string) {
 
 		// -p=parser
 		if strings.HasPrefix(words[1], "-p=") {
-			arg.Parser = chompQuotes(strings.Split(words[1], "=")[1])
+			arg.Parser = unquote(strings.Split(words[1], "=")[1])
 			words = append(words[:1], words[1+1:]...)
 		} else {
 			arg.Parser = "base" // by default base Parser
 		}
 
 		if arg.argType == "opt" {
-			arg.ArgName = chompQuotes(words[1])
+			arg.ArgName = unquote(words[1])
 		} else if arg.argType == "pos" {
 			arg.ArgName = ""
 		} else if arg.argType == "cfg" {
-			keyValue := strings.Split(chompQuotes(words[1]), "=")
-			if keyValue[0] == "INCLUDE_SOURCE" {
-				data.Config.SourceIncludes = append(data.Config.SourceIncludes, keyValue[1])
-			} else {
-				panic("unknown config key " + keyValue[0])
+			configName, configValue, valid := strings.Cut(unquote(words[1]), "=")
+			if !valid {
+				panic("cfg line is invalid : " + argLine)
+			}
+			configName = unquote(configName)
+			configValue = unquote(configValue)
+			switch configName {
+			case "INCLUDE_SOURCE":
+				data.Config.SourceIncludes = append(data.Config.SourceIncludes, configValue)
+			case "RELOAD_FILE_TRIGGER":
+				data.Config.ReloadTriggerFiles = append(data.Config.ReloadTriggerFiles, configValue)
+			case "AUTOGEN_OUTFILE":
+				data.Config.AutoGenOutfile = configValue
+			case "AUTOGEN_ARGS_VERBATIM":
+				configValue = strings.Replace(configValue, "--source", "", 1)
+				data.Config.AutoGenArgsVerbatim = configValue
+			default:
+				panic("unknown config key " + configName)
 			}
 		} else {
 			panic("unknown add operation " + arg.argType)
@@ -151,14 +177,14 @@ func parseOperations(cliName string, operationsStr string) {
 		for _, word := range words {
 			// --choices
 			if strings.HasPrefix(word, "--choices") {
-				choices := chompQuotes(strings.Split(word, "=")[1])
+				choices := unquote(strings.Split(word, "=")[1])
 				arg.ValueChoices = strings.Fields(choices)
 				arg.CompleteType = "choices"
 			}
 
 			// --closure
 			if strings.HasPrefix(word, "--closure") {
-				closureName := chompQuotes(strings.Split(word, "=")[1])
+				closureName := unquote(strings.Split(word, "=")[1])
 				arg.CompleteType = "closure"
 				arg.ClosureName = closureName
 			}
@@ -231,7 +257,7 @@ func parseOperations(cliName string, operationsStr string) {
 	})
 	check(os.WriteFile("/home/willy/.dotfiles/bashcompletils/compile/complete-template.txt", completeTemplateNew, 0644))
 
-	tmpl, err := template.New("bctil-compile").Funcs(
+	templateParsed, err := template.New("bctil-compile").Funcs(
 		template.FuncMap{
 			"StringsJoin":      strings.Join,
 			"BashArray":        BashArray,
@@ -240,13 +266,16 @@ func parseOperations(cliName string, operationsStr string) {
 			"BashAssoc":        BashAssoc,
 		},
 	).Parse(string(completeTemplateNew))
-	if err != nil {
-		panic(err)
-	}
-	err = tmpl.Execute(os.Stdout, data)
-	if err != nil {
-		panic(err)
-	}
+	check(err)
+
+	var buffer bytes.Buffer
+	check(templateParsed.Execute(&buffer, data))
+	compiledShell := buffer.String()
+
+	compiledShell = regexp.MustCompile(`(?m)^\s+\n`).ReplaceAllString(compiledShell, "\n")
+
+	_, err = os.Stdout.WriteString(compiledShell)
+	check(err)
 }
 
 func setupLogger() func() {
@@ -267,13 +296,15 @@ func check(e error) {
 	}
 }
 
-func chompQuotes(str string) string {
-	var found bool
-	if str, found = strings.CutPrefix(str, "'"); found {
-		str, _ = strings.CutSuffix(str, "'")
-	} else if str, found = strings.CutPrefix(str, "\""); found {
-		str, _ = strings.CutSuffix(str, "\"")
+func unquote(str string) string {
+	if strings.HasPrefix(str, `'`) && strings.HasSuffix(str, `'`) {
+		str, _ = strings.CutPrefix(str, `'`)
+		str, _ = strings.CutSuffix(str, `'`)
+	} else if strings.HasPrefix(str, `"`) && strings.HasSuffix(str, `"`) {
+		str, _ = strings.CutPrefix(str, `"`)
+		str, _ = strings.CutSuffix(str, `"`)
 	}
+
 	return str
 }
 

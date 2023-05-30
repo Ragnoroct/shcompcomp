@@ -79,6 +79,7 @@ run_tests() {
   bctils_err_invalid="$bctils_err"
   bctils_cli_compile "examplebad" --source 2>/dev/null
   bctils_err_compile="$bctils_err"
+  bctils_err=""
   expect_cmd "missing type error : $bctils_err_missing" test "$bctils_err_missing" == "second argument must be type opt or pos"
   expect_cmd "invalid type error : $bctils_err_invalid" test "$bctils_err_invalid" == "second argument must be type opt or pos"
   expect_cmd "compile error : $bctils_err_compile" test "$bctils_err_compile" == "cannot compile with errors adding arguments"
@@ -152,7 +153,6 @@ subparsers = parser.add_subparsers()
 parser_cmd = subparsers.add_parser("sub-cmd-name")
 parser_cmd.add_argument("arg1", choices=["c1", "c2", "c3"])
 EOF
-  chmod u+x "/tmp/bctils-testing-simple-parser/examplecli8.py"
   bctils_autogen "/tmp/bctils-testing-simple-parser/examplecli8.py" --lang=py --source
   expect_cmd "python script is runnable" python "/tmp/bctils-testing-simple-parser/examplecli8.py"
   expect_complete_compreply "examplecli8.py " "sub-cmd-name --some-way2"
@@ -167,6 +167,32 @@ EOF
   expect_cmd "can specify outfile for autogen" test -f "/tmp/bctils-testing-simple-parser/examplecli8.py.bash"
 
   current_suite "bctils_autogen reloads on changes"
+  mkdir -p "/tmp/bctils-testing-simple-parser"
+  cat - > "/tmp/bctils-testing-simple-parser/examplecli10.py" <<EOF
+from argparse import ArgumentParser
+parser = ArgumentParser()
+parser.add_argument("--some-way2")
+subparsers = parser.add_subparsers()
+parser_cmd = subparsers.add_parser("sub-cmd-name")
+parser_cmd.add_argument("arg1", choices=["c1", "c2", "c3"])
+EOF
+  bctils_autogen "/tmp/bctils-testing-simple-parser/examplecli10.py" --lang=py --source
+  expect_cmd "python script is runnable" python "/tmp/bctils-testing-simple-parser/examplecli10.py"
+  expect_complete_compreply "examplecli10.py " "sub-cmd-name --some-way2"
+  expect_complete_compreply "examplecli10.py --some" "--some-way2"
+  expect_complete_compreply "examplecli10.py sub-cmd-name " "c1 c2 c3"
+  cat - > "/tmp/bctils-testing-simple-parser/examplecli10.py" <<EOF
+from argparse import ArgumentParser
+parser = ArgumentParser()
+parser.add_argument("--some-way2")
+subparsers = parser.add_subparsers()
+parser_cmd = subparsers.add_parser("sub-cmd-name")
+parser_cmd.add_argument("arg1", choices=["c4", "c5", "c6"])
+EOF
+  expect_complete_compreply "examplecli10.py sub-cmd-name " "c4 c5 c6"
+  expect_complete_compreply "examplecli10.py " "sub-cmd-name --some-way2"
+  expect_complete_compreply "examplecli10.py --some" "--some-way2"
+
   current_suite "bctils_autogen caches on md5 in variable"
   current_suite "bctils_autogen caches on md5 in file"
 
@@ -178,6 +204,8 @@ EOF
   current_suite "add flag to auto add = if only one arg option left and it requires an argument"
   current_suite "complete single -s type options like -f filepath"
   current_suite "complete single -s type options like -ffilepath (if that makes sense)"
+  current_suite "arbitrary rules like -flags only before positionals"
+  current_suite "arbitrary rules like --options values only or --options=values only for long args (getopt bug)"
 
   current_suite "simple options and arguments with nargs=*"
   current_suite "more complex autocomplete in different parts of command"
@@ -404,6 +432,7 @@ current_suite() {
 print_suite() {
   if [[ "$current_suite_printed" == 0 ]]; then
     echo -e "$current_suite_name"
+    log "$current_suite_name"
     current_suite_printed=1
   fi
 }
@@ -417,6 +446,11 @@ fail_test() {
   all_result="${RED}FAIL${NC}"
   fail_count=$((fail_count + 1))
   fail_count_str=" $fail_count"
+
+  if [[ -n "$bctils_err" ]]; then
+    echo "bctils_err: $bctils_err"
+    echo "stopping tests..."
+  fi
 }
 
 pass_test() {
@@ -425,6 +459,12 @@ pass_test() {
     current_suite_printed=1
   fi
   echo -e "${GREEN}PASS${NC}: '$1'"
+
+  if [[ -n "$bctils_err" ]]; then
+    echo "bctils_err: $bctils_err" 1>&2
+    echo "stopping tests..." 1>&2
+    exit 1
+  fi
 }
 
 complete_cmd_str() {
@@ -523,7 +563,7 @@ else
   __bctils_test_run_test_script() {
     BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" \
     TEST_RUN_MODE="RUN_TESTS_ONCE" \
-    bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: bctils-tests FAIL${NC}"; }
+    bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: $0 FAILED. exit_code=$? ${NC}"; }
     echo "waiting for changes..."
     echo "--------"
   }

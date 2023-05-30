@@ -2,11 +2,12 @@
 log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
 log_everything () { if [[ "{{.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.log; exec 2>&1; set -x; fi; }
 
-# todo: find a way to preserve single space between template {{/* actions */}}
+{{.AddOperationsComment}}
+
 __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   local -A subparsers={{ BashAssocNoQuote .ParserNames 2 }}
 
-  {{- if .Options }}
+  {{ if .Options }}
   # options
   {{range $parser, $options := .Options -}}
   local _option_{{$options.ParserClean}}_names={{ BashArray $options.OptionNames 2 }}
@@ -139,5 +140,30 @@ source "{{.}}"
 {{end}}
 {{end}}
 
+{{if .Config.ReloadTriggerFiles}}
+__bctils_v2_autocomplete_autogen_reloader_{{.CliNameClean}} () {
+  reload_files={{ BashArray .Config.ReloadTriggerFiles 2 }}
+  reload_files_md5="$(md5sum "${reload_files[@]}")"
+  cache_file="$HOME/.cache/bctils_autogen_md5_{{.CliNameClean}}"
+
+  if [[
+    "$__bctils_autogen_reload_cache_md5_{{.CliNameClean}}" != "$reload_files_md5" \
+    && "$(cat "$cache_file" 2>/dev/null)" != "$reload_files_md5" \
+  ]]
+  then
+    if {{.Config.AutoGenArgsVerbatim}}
+    then
+      source "{{.Config.AutoGenOutfile}}"
+      echo "$reload_files_md5" > "$cache_file"
+      __bctils_autogen_reload_cache_md5_{{.CliNameClean}}="$reload_files_md5"
+    fi
+  fi
+
+  __bctils_v2_autocomplete_{{.CliNameClean}}
+}
+complete -F __bctils_v2_autocomplete_autogen_reloader_{{.CliNameClean}} -o nospace "{{ .CliName }}"
+{{else}}
 # todo: add closure validation when sourcing
 complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} -o nospace "{{ .CliName }}"
+{{end}}
+

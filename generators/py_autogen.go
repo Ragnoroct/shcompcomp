@@ -11,16 +11,20 @@ import (
 
 var lang *sitter.Language
 
-func GeneratePythonOperations(srcFile string) string {
+func GeneratePythonOperations(srcFile string, argsVerbatim string, outFile string) string {
 	content, err := os.ReadFile(srcFile)
 	if err != nil {
 		fmt.Println("failed to read file: " + srcFile)
 		os.Exit(1)
 	}
-	return parseSrc(string(content))
+	operations := parseSrc(string(content))
+	operations = append(operations, fmt.Sprintf(`cfg RELOAD_FILE_TRIGGER="%s"`, srcFile))
+	operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_ARGS_VERBATIM="%s"`, argsVerbatim))
+	operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_OUTFILE="%s"`, outFile))
+	return strings.Join(operations, "\n") + "\n"
 }
 
-func parseSrc(srcStr string) string {
+func parseSrc(srcStr string) []string {
 	lang = python.GetLanguage()
 	src := []byte(srcStr)
 	parser := sitter.NewParser()
@@ -30,9 +34,7 @@ func parseSrc(srcStr string) string {
 
 	parserVarName := getParserVarName(root, src)
 
-	operations := getArgumentOperations(root, pyIdentifier(parserVarName), src)
-
-	return strings.Join(operations, "\n") + "\n"
+	return getArgumentOperations(root, pyIdentifier(parserVarName), src)
 }
 
 type pyIdentifier string
