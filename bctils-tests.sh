@@ -561,9 +561,14 @@ else
   }
 
   __bctils_test_run_test_script() {
-    BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" \
-    TEST_RUN_MODE="RUN_TESTS_ONCE" \
-    bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: $0 FAILED. exit_code=$? ${NC}"; }
+    if go test -v "./generators"
+    then
+      BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" \
+      TEST_RUN_MODE="RUN_TESTS_ONCE" \
+      bash "$script_dir/bctils-tests.sh" || { echo -e "${RED}ERROR: $0 FAILED. exit_code=$? ${NC}"; }
+    else
+      echo -e "${RED}go tests failed${NC}"
+    fi
     echo "waiting for changes..."
     echo "--------"
   }

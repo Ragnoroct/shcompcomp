@@ -234,6 +234,13 @@ func getPyArguments(callNode *sitter.Node, src []byte) pyArguments {
 		return pyArgs
 	}
 
+	panicNode := func(n *sitter.Node, msg string) {
+		lines := strings.Split(string(src), "\n")
+		nodeLine := fmt.Sprintf("line %d: %s", n.StartPoint().Row, lines[n.StartPoint().Row])
+		newMsg := msg + "\n" + nodeLine
+		panic(newMsg)
+	}
+
 	parseArgNode = func(argNode *sitter.Node) interface{} {
 		var value interface{}
 		switch argNode.Type() {
@@ -246,7 +253,7 @@ func getPyArguments(callNode *sitter.Node, src []byte) pyArguments {
 			}
 			value = list
 		default:
-			panic(fmt.Sprintf("unhandled Node.Type() '%s'", argNode.Type()))
+			panicNode(argNode, fmt.Sprintf("unhandled Node.Type() '%s'", argNode.Type()))
 		}
 		return value
 	}

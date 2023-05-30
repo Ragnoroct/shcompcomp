@@ -18,7 +18,7 @@ __watchfile_main() {
   fi
 
   if [[ ! -f "$file_resolved" ]]; then
-    echo "error: '$file_resolved' doesn't exist"
+    echo "error: '$file' doesn't exist"
     return 1
   fi
 

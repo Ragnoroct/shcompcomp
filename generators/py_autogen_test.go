@@ -21,66 +21,71 @@ func TestMain(m *testing.M) {
 }
 
 func TestAutoGen(t *testing.T) {
-	t.Run("options with values", func(t *testing.T) {})
-	t.Run("options with values", func(t *testing.T) {})
-	t.Run("allow closures through comments", func(t *testing.T) {})
-	t.Run("work with multiple files with same parser", func(t *testing.T) {})
-
 	runSubtest(t, "simple subparser", func(t *testing.T) {
-		expectedArgs := dedent(`
-			bctils_cli_add examplecli pos --choices="sub-cmd-name"
-			bctils_cli_add examplecli opt "--some-way"
-			bctils_cli_add examplecli pos -p="sub-cmd-name" --choices="c1 c2 c3"
-		`)
-		actualArgs := parseSrc(
-			dedent(`
+		expectOperations(
+			t,
+			`
 			from argparse import ArgumentParser
 			parser = ArgumentParser()
 			parser.add_argument("--some-way")
 			subparsers = parser.add_subparsers()
 			parser_cmd = subparsers.add_parser("sub-cmd-name")
-			parser_cmd.add_argument("arg1", choices=["c1", "c2", "c3"])
-			`),
+			parser_cmd.add_argument("arg1", choices=["c1", "c2", "c3"])`,
+			`
+			pos --choices="sub-cmd-name"
+			opt "--some-way"
+			pos -p="sub-cmd-name" --choices="c1 c2 c3"
+			`,
 		)
-		expectEqual(t, expectedArgs, actualArgs, "")
-	})
-	runSubtest(t, "simple subparser2", func(t *testing.T) {
-
 	})
 
-	//t.Run("simple option", func(t *testing.T) {
-	//	expectedArgs := dedent(`
-	//		bctils_cli_add examplecli opt "--help"
-	//	`)
-	//	actualArgs := parseSrc(
-	//		"examplecli",
-	//		dedent(`
-	//		from argparse import ArgumentParser
-	//		parser = ArgumentParser()
-	//		parser.add_argument("--help")
-	//		`),
-	//	)
-	//	expectEqual(t, expectedArgs, actualArgs, "")
-	//})
-	//
-	//t.Run("simple positional", func(t *testing.T) {
-	//	expectedArgs := dedent(`
-	//		bctils_cli_add examplecli pos --choices="c1 c2 c3"
-	//		bctils_cli_add examplecli pos --choices="c4 c5 c6"
-	//	`)
-	//	actualArgs := parseSrc(
-	//		"examplecli",
-	//		dedent(`
-	//		from argparse import ArgumentParser
-	//		parser = ArgumentParser()
-	//		parser.add_argument("arg1", choices=["c1", "c2", "c3"])
-	//		parser.add_argument("arg2", choices=["c4", "c5", "c6"])
-	//	`))
-	//	expectEqual(t, expectedArgs, actualArgs, "")
-	//})
+	runSubtest(t, "simple option", func(t *testing.T) {
+		expectOperations(
+			t,
+			`
+			from argparse import ArgumentParser
+			parser = ArgumentParser()
+			parser.add_argument("--help")
+			`,
+			`
+			opt "--help"
+			`,
+		)
+	})
+
+	runSubtest(t, "simple option", func(t *testing.T) {
+		expectOperations(
+			t,
+			`
+			from argparse import ArgumentParser
+			parser = ArgumentParser()
+			parser.add_argument("arg1", choices=["c1", "c2", "c3"])
+			parser.add_argument("arg2", choices=["c4", "c5", "c6"])
+			`,
+			`
+			pos --choices="c1 c2 c3"
+			pos --choices="c4 c5 c6"
+			`,
+		)
+	})
+
+	runSubtest(t, "options with values", nil)
+	runSubtest(t, "options with values", nil)
+	runSubtest(t, "allow closures through comments", nil)
+	runSubtest(t, "work with multiple files with same parser", nil)
+}
+
+func expectOperations(t *testing.T, src string, expected string) {
+	actual := strings.TrimSpace(strings.Join(parseSrc(dedent(src)), "\n")) + "\n"
+	expected = strings.TrimSpace(dedent(expected)) + "\n"
+	expectEqual(t, expected, actual, "")
 }
 
 func runSubtest(t *testing.T, name string, testMethod func(t *testing.T)) {
+	if testMethod == nil {
+		return
+	}
+
 	onBefore := func(t *testing.T) {
 		log.Printf("=== TEST : %s/%s", t.Name(), name)
 	}

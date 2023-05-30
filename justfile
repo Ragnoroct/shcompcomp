@@ -4,7 +4,7 @@ benchmark:
 test:
   ./bctils-tests.sh
 
-test-generators test_name="":
+test-golang test_name="":
   #!/usr/bin/env bash
   proj_dir="$PWD"
 
@@ -52,6 +52,35 @@ test-generators test_name="":
     "${test_call[@]}"
     echo -e "${magenta}DONE${reset}: $(date '+%T.%3N')"
   }
+
+pumpitcli:
+  #!/usr/bin/env bash
+  inotifywait_action () {
+    local file="$1"
+    if [[ "$file" =~ ".go"$ ]]; then
+      just build
+    fi
+    shell_lines=(
+      'echo "> sourcing bctils-lib.sh"'
+      'source "$HOME/.dotfiles/bashcompletils/bctils-lib.sh"'
+      'echo "> bctils_autogen"'
+      'bctils_autogen "$HOME/repos/pumpit-dev-tools/pumpitcli" --lang=py --source'
+    )
+    cmd_args=(
+      bash -c "$(printf "%s\n" "${shell_lines[@]}")"
+    )
+    "${cmd_args[@]}"
+  }
+
+  just build
+  inotifywait_action
+  inotifywait -q -m -r -e close_write,create,delete "$PWD" \
+  --exclude "$proj_dir\/((compile|build|.git|.idea)\/?|.*(\.lock|~|\.log))$" | \
+  inotifywait_debounce 100 | \
+  while read -r dir events dir_file; do
+    inotifywait_action "$dir/$dir_file"
+  done
+
 logs:
   #!/usr/bin/env bash
   red="$(tput setaf 1)"
