@@ -152,8 +152,16 @@ bctils_autogen () {
   log "$cli_name : ${lang} autogen for files : ${files[*]}"
   mkdir -p "$(dirname "$out_file")"
 
-  # shellcheck disable=SC2094
-  if ! bctils -autogen-lang py -autogen-src "${files[0]}" -autogen-outfile "$out_file" "$cli_name" "$args_verbatim" > "$out_file"
+  autogen_args=(
+    -autogen-lang py
+    -autogen-src "${files[0]}"
+    -autogen-outfile "$out_file"
+    -autogen-extra-watch "$(which bctils)"  # todo: cache this at top
+    -autogen-extra-watch "$(realpath "${BASH_SOURCE[0]}")"
+    "$cli_name"
+    "$args_verbatim"
+  )
+  if ! bctils "${autogen_args[@]}" > "$out_file"
   then
     # shellcheck disable=SC2034
     bctils_err="bctils autogen failed"

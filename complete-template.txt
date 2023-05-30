@@ -142,7 +142,6 @@ source "{{.}}"
 
 {{if .Config.ReloadTriggerFiles}}
 __bctils_v2_autocomplete_autogen_reloader_{{.CliNameClean}} () {
-  # todo: hash binary also
   reload_files={{ BashArray .Config.ReloadTriggerFiles 2 }}
   reload_files_md5="$(md5sum "${reload_files[@]}")"
   cache_file="$HOME/.cache/bctils_autogen_md5_{{.CliNameClean}}"

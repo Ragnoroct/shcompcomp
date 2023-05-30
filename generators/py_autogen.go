@@ -11,16 +11,19 @@ import (
 
 var lang *sitter.Language
 
-func GeneratePythonOperations(srcFile string, argsVerbatim string, outFile string) string {
+func GeneratePythonOperations(srcFile string, argsVerbatim string, outFile string, extraWatchFiles []string) string {
 	content, err := os.ReadFile(srcFile)
 	if err != nil {
 		fmt.Println("failed to read file: " + srcFile)
 		os.Exit(1)
 	}
 	operations := parseSrc(string(content))
-	operations = append(operations, fmt.Sprintf(`cfg RELOAD_FILE_TRIGGER="%s"`, srcFile))
 	operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_ARGS_VERBATIM="%s"`, argsVerbatim))
 	operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_OUTFILE="%s"`, outFile))
+	operations = append(operations, fmt.Sprintf(`cfg RELOAD_FILE_TRIGGER="%s"`, srcFile))
+	for _, file := range extraWatchFiles {
+		operations = append(operations, fmt.Sprintf(`cfg RELOAD_FILE_TRIGGER="%s"`, file))
+	}
 	return strings.Join(operations, "\n") + "\n"
 }
 

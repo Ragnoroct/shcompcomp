@@ -57,10 +57,22 @@ type templateData struct {
 	AddOperationsComment string
 }
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return ""
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
 type cliFlags struct {
-	autogenSrcFile string
-	autogenLang    string
-	autogenOutfile string
+	autogenLang            string
+	autogenOutfile         string
+	autogenSrcFile         string
+	autogenExtraWatchFiles arrayFlags
 }
 
 func main() {
@@ -71,14 +83,14 @@ func main() {
 	flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
 	flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
 	flag.StringVar(&flags.autogenOutfile, "autogen-outfile", "", "outfile location so it can source itself")
+	flag.Var(&flags.autogenExtraWatchFiles, "autogen-extra-watch", "extra files to trigger reloads")
 	flag.Parse()
 	cliName := flag.Arg(0)
 
 	var operationsStr string
 	if flags.autogenLang == "py" {
-		log.Printf("autogenOutfile: %s", flags.autogenOutfile)
 		argsVerbatim := flag.Arg(1)
-		operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile, argsVerbatim, flags.autogenOutfile)
+		operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile, argsVerbatim, flags.autogenOutfile, flags.autogenExtraWatchFiles)
 	} else if flags.autogenLang == "" {
 		operationsStr = ""
 		scanner := bufio.NewScanner(os.Stdin)
