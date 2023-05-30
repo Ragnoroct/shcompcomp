@@ -252,6 +252,10 @@ func getPyArguments(callNode *sitter.Node, src []byte) pyArguments {
 				list[i] = parseArgNode(argNode.NamedChild(i))
 			}
 			value = list
+		case "true":
+			value = true
+		case "false":
+			value = false
 		default:
 			panicNode(argNode, fmt.Sprintf("unhandled Node.Type() '%s'", argNode.Type()))
 		}

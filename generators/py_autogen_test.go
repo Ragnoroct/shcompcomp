@@ -39,6 +39,24 @@ func TestAutoGen(t *testing.T) {
 		)
 	})
 
+	runSubtest(t, "true/false arguments", func(t *testing.T) {
+		expectOperations(
+			t,
+			`
+			from argparse import ArgumentParser
+			parser = ArgumentParser()
+			parser.add_argument("--some-way")
+			subparsers = parser.add_subparsers(help="sub-command help", dest="command", required=True)
+			parser_cmd = subparsers.add_parser("sub-cmd-name")
+			parser_cmd.add_argument("arg1", choices=["c1", "c2", "c3"], required=False)`,
+			`
+			pos --choices="sub-cmd-name"
+			opt "--some-way"
+			pos -p="sub-cmd-name" --choices="c1 c2 c3"
+			`,
+		)
+	})
+
 	runSubtest(t, "simple option", func(t *testing.T) {
 		expectOperations(
 			t,
