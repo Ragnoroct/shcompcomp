@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 
-log () { "$DEBUG" && echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
 errmsg () { echo "$@" 1>&2; }
 
 declare -g bctils_err=""
@@ -8,7 +8,6 @@ declare -g bctils_err=""
 BCTILS_COMPILE_DIR="${BCTILS_COMPILE_DIR:-"$HOME/.config/bctils"}"
 BCTILS_BIN_PATH="$(which bctils)"
 BCTILS_SH_PATH="$(realpath "${BASH_SOURCE[0]}")"
-DEBUG=false
 
 bctils_cli_register () {
   local cli_name="$1"
@@ -113,7 +112,7 @@ bctils_cli_compile () {
   fi
 
   mkdir -p "$(dirname "$out_file")"
-  if ! printf '%s\n' "${bctils_data_args[@]}" | bctils "$cli_name" > "$out_file"
+  if ! printf '%s\n' "${bctils_data_args[@]}" | bctils -legacy "$cli_name" > "$out_file"
   then
     # shellcheck disable=SC2034
     bctils_err="bctils compile failed"
@@ -195,7 +194,7 @@ bctils_autogen () {
         return 1
       fi
     else
-      if ! bctils "${autogen_args[@]}" > "$out_file"
+      if ! bctils -legacy "${autogen_args[@]}" > "$out_file"
       then
         # shellcheck disable=SC2034
         bctils_err="bctils autogen failed"

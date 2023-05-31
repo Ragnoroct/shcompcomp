@@ -1,34 +1,32 @@
 #!/usr/bin/env bash
+
+{{- /*gotype: bctils.templateData*/ -}}
+
 log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
-log_everything () { if [[ "{{.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.log; exec 2>&1; set -x; fi; }
+log_everything () { if [[ "{{.Cli.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.log; exec 2>&1; set -x; fi; }
 
-{{.AddOperationsComment}}
+{{.OperationsComment}}
 
-__bctils_v2_autocomplete_{{ .CliNameClean }} () {
-  local -A subparsers={{ BashAssocNoQuote .ParserNames 2 }}
+__bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
+  local -A subparsers={{ BashAssocNoQuote .ParserNameMap 2 }}
 
-  {{ if .Options }}
   # options
-  {{range $parser, $options := .Options -}}
-  local _option_{{$options.ParserClean}}_names={{ BashArray $options.OptionNames 2 }}
-  local -A _option_{{$options.ParserClean}}_data={{- BashAssocQuote $options.OptionsDataAssoc 2 }}
-  {{ end \}}
-  {{ else }}
-  {{- end }}
+  {{range $parser := .Parsers -}}
+  local _option_{{$parser.NameClean}}_names={{ BashArray $parser.OptionalsNames 2 }}
+  local -A _option_{{$parser.NameClean}}_data={{ BashAssocQuote $parser.OptionalsData 2 }}
+  {{ end }}
 
-  {{- if .Positionals }}
   # arguments
-  {{range $parser, $positionals := .Positionals -}}
-  {{- range $arg := $positionals.Items -}}
-  {{- if eq $arg.CompleteType "choices" \}}
-  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_type="choices"
-  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_choices={{- BashArray .ValueChoices 2 }}
-  {{- else if eq $arg.CompleteType "closure" \}}
-  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_type="closure"
-  local _positional_{{$positionals.ParserClean}}_{{$arg.PositionalNumber}}_closure="{{ $arg.ClosureName }}"
+  {{range $parser := .Parsers -}}
+  {{- range $pos := $parser.Positionals -}}
+  {{- if eq $pos.CompleteType "choices" }}
+  local _positional_{{$parser.NameClean}}_{{$pos.Number}}_type="choices"
+  local _positional_{{$parser.NameClean}}_{{$pos.Number}}_choices={{- BashArray $pos.Choices 2 }}
+  {{- else if eq $pos.CompleteType "closure" }}
+  local _positional_{{$parser.NameClean}}_{{$pos.Number}}_type="closure"
+  local _positional_{{$parser.NameClean}}_{{$pos.Number}}_closure="{{ $pos.ClosureName }}"
   {{- end}}
   {{ end }}
-  {{- end \}}
   {{- end }}
 
   # shellcheck disable=SC2034
@@ -134,36 +132,36 @@ __bctils_v2_autocomplete_{{ .CliNameClean }} () {
   fi
 }
 
-{{if .Config.SourceIncludes}}
-{{range .Config.SourceIncludes -}}
+{{if .Cli.Config.SourceIncludes}}
+{{range .Cli.Config.SourceIncludes -}}
 source "{{.}}"
 {{end}}
 {{end}}
 
-{{if .Config.ReloadTriggerFiles}}
-__bctils_v2_autocomplete_autogen_reloader_{{.CliNameClean}} () {
-  reload_files={{ BashArray .Config.ReloadTriggerFiles 2 }}
+{{if .Cli.Config.ReloadTriggerFiles}}
+__bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} () {
+  reload_files={{ BashArray .Cli.Config.ReloadTriggerFiles 2 }}
   reload_files_md5="$(md5sum "${reload_files[@]}")"
-  cache_file="$HOME/.cache/bctils_autogen_md5_{{.CliNameClean}}"
+  cache_file="$HOME/.cache/bctils_autogen_md5_{{.Cli.CliNameClean}}"
 
   if [[
-    "$__bctils_autogen_reload_cache_md5_{{.CliNameClean}}" != "$reload_files_md5" \
+    "$__bctils_autogen_reload_cache_md5_{{.Cli.CliNameClean}}" != "$reload_files_md5" \
     && "$(cat "$cache_file" 2>/dev/null)" != "$reload_files_md5" \
   ]]
   then
-    if {{.Config.AutoGenArgsVerbatim}}
+    if {{.Cli.Config.AutoGenArgsVerbatim}}
     then
-      source "{{.Config.AutoGenOutfile}}"
+      source "{{.Cli.Config.AutoGenOutfile}}"
       echo "$reload_files_md5" > "$cache_file"
-      __bctils_autogen_reload_cache_md5_{{.CliNameClean}}="$reload_files_md5"
+      __bctils_autogen_reload_cache_md5_{{.Cli.CliNameClean}}="$reload_files_md5"
     fi
   fi
 
-  __bctils_v2_autocomplete_{{.CliNameClean}}
+  __bctils_v2_autocomplete_{{.Cli.CliNameClean}}
 }
-complete -F __bctils_v2_autocomplete_autogen_reloader_{{.CliNameClean}} -o nospace "{{ .CliName }}"
+complete -F __bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} -o nospace "{{ .Cli.CliName }}"
 {{else}}
 # todo: add closure validation when sourcing
-complete -F __bctils_v2_autocomplete_{{ .CliNameClean }} -o nospace "{{ .CliName }}"
+complete -F __bctils_v2_autocomplete_{{ .Cli.CliNameClean }} -o nospace "{{ .Cli.CliName }}"
 {{end}}
 

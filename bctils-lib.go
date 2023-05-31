@@ -1,21 +1,23 @@
 package main
 
 import (
-	generators "bctils/generators"
+	"bctils/generators"
 	"bufio"
 	"bytes"
 	_ "embed"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
 )
 
-//go:embed complete-template.txt
+//go:embed complete-template.go.sh
 var completeTemplate string
 
 type Argument struct {
@@ -48,13 +50,29 @@ type Config struct {
 }
 
 type templateData struct {
-	CliName              string
-	CliNameClean         string
-	Config               Config
-	Positionals          map[string]PositionalList
-	Options              map[string]OptionList
-	ParserNames          map[string]string
-	AddOperationsComment string
+	Cli Cli
+}
+
+func (d templateData) ParserNameMap() map[string]string {
+	parserNames := make(map[string]string, len(d.Cli.Parsers.parserSeq))
+	for _, name := range d.Cli.Parsers.parserSeq {
+		parserNames[string(name)] = cleanShellIdentifier(string(name))
+	}
+	return parserNames
+}
+
+func (d templateData) Parsers() []CliParser {
+	log.Printf("parser seq: %v", d.Cli.Parsers.parserSeq)
+	parsers := make([]CliParser, len(d.Cli.Parsers.parserSeq))
+	for i, name := range d.Cli.Parsers.parserSeq {
+		parsers[i] = d.Cli.Parsers.parserMap[name]
+		log.Printf("parser: %v", d.Cli.Parsers.parserMap[name])
+	}
+	return parsers
+}
+
+func (d templateData) OperationsComment() string {
+	return "# " + strings.Join(d.Cli.operations, "\n# ")
 }
 
 type arrayFlags []string
@@ -76,183 +94,175 @@ type cliFlags struct {
 }
 
 func main() {
+	var err error
 	logCleanup := setupLogger()
 	defer logCleanup()
 
-	var flags = cliFlags{}
-	flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
-	flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
-	flag.StringVar(&flags.autogenOutfile, "autogen-outfile", "", "outfile location so it can source itself")
-	flag.Var(&flags.autogenExtraWatchFiles, "autogen-extra-watch", "extra files to trigger reloads")
-	flag.Parse()
-	cliName := flag.Arg(0)
-
-	var operationsStr string
-	if flags.autogenLang == "py" {
-		argsVerbatim := flag.Arg(1)
-		operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile, argsVerbatim, flags.autogenOutfile, flags.autogenExtraWatchFiles)
-	} else if flags.autogenLang == "" {
-		operationsStr = ""
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			argLine := scanner.Text()
-			operationsStr += argLine + "\n"
-		}
+	if len(os.Args) < 2 || os.Args[1] != "-legacy" {
+		// new
+		_, err = io.ReadAll(os.Stdin)
+		check(err)
 	} else {
-		fmt.Printf("error: unknown lang '%s' for autogen", flags.autogenLang)
-		os.Exit(1)
-	}
+		// legacy: allow tests to pass while reworking
+		os.Args = append(os.Args[0:1], os.Args[2:]...)
+		var flags = cliFlags{}
+		flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
+		flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
+		flag.StringVar(&flags.autogenOutfile, "autogen-outfile", "", "outfile location so it can source itself")
+		flag.Var(&flags.autogenExtraWatchFiles, "autogen-extra-watch", "extra files to trigger reloads")
+		flag.Parse()
+		cliName := flag.Arg(0)
 
-	parseOperations(cliName, operationsStr)
+		var operationsStr string
+		if flags.autogenLang == "py" {
+			argsVerbatim := flag.Arg(1)
+			operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile, argsVerbatim, flags.autogenOutfile, flags.autogenExtraWatchFiles)
+		} else if flags.autogenLang == "" {
+			operationsStr = ""
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				argLine := scanner.Text()
+				operationsStr += argLine + "\n"
+			}
+		} else {
+			fmt.Printf("error: unknown lang '%s' for autogen", flags.autogenLang)
+			os.Exit(1)
+		}
+
+		operationsStr = "cfg cli_name=" + cliName + "\n" + operationsStr
+		cli := parseOperations(operationsStr)
+
+		compiledShell, err := compileCli(cli)
+		if err != nil {
+			exit(1, err)
+		}
+
+		_, err = os.Stdout.WriteString(compiledShell)
+		check(err)
+	}
 }
 
-func parseOperations(cliName string, operationsStr string) {
-	cliNameClean := regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(cliName, "")
+func exit(code int, msg any) {
+	_, _ = fmt.Fprintln(os.Stderr, msg)
+	os.Exit(code)
+}
 
-	data := templateData{
-		Positionals:  make(map[string]PositionalList, 0),
-		Options:      make(map[string]OptionList, 0),
-		ParserNames:  make(map[string]string),
-		CliNameClean: cliNameClean,
-		CliName:      cliName,
-		Config: Config{
-			SourceIncludes: make([]string, 0),
-		},
+func parseOperationsStdin(stdin io.Reader) string {
+	content, err := io.ReadAll(stdin)
+	check(err)
+	cli := parseOperations(string(content))
+	completeCode, _ := compileCli(cli)
+	return completeCode
+}
+
+func parseOperations(operationsStr string) Cli {
+	var parsers = CliParsers{
+		parserMap: map[CliParserName]CliParser{},
+		parserSeq: []CliParserName{},
 	}
 
-	positionalCounter := map[string]int{}
-
-	lines := strings.Split(operationsStr, "\n")
-	scanner := bufio.NewScanner(os.Stdin)
-	for _, argLine := range lines {
-		if strings.TrimSpace(argLine) == "" {
+	cli := Cli{
+		Config: CliConfig{},
+	}
+	var operationLinesParsed []string
+	operationLines := strings.Split(operationsStr, "\n")
+	for _, opStr := range operationLines {
+		opStr = strings.TrimSpace(opStr)
+		if opStr == "" {
 			continue
 		}
-		if data.AddOperationsComment != "" {
-			data.AddOperationsComment += "\n"
-		}
-		data.AddOperationsComment += "# " + argLine
 
-		// https://stackoverflow.com/a/47489825
-		quoted := false
-		words := strings.FieldsFunc(argLine, func(r rune) bool {
-			if r == '"' {
-				quoted = !quoted
-			}
-			return !quoted && r == ' '
-		})
+		words := splitOperation(opStr)
+		opType := words[0]
 
-		arg := Argument{}
-		arg.argType = words[0]
-
-		// -p=parser
-		if strings.HasPrefix(words[1], "-p=") {
-			arg.Parser = unquote(strings.Split(words[1], "=")[1])
-			words = append(words[:1], words[1+1:]...)
-		} else {
-			arg.Parser = "base" // by default base Parser
-		}
-
-		if arg.argType == "opt" {
-			arg.ArgName = unquote(words[1])
-		} else if arg.argType == "pos" {
-			arg.ArgName = ""
-		} else if arg.argType == "cfg" {
+		switch opType {
+		case "cfg":
 			configName, configValue, valid := strings.Cut(unquote(words[1]), "=")
 			if !valid {
-				panic("cfg line is invalid : " + argLine)
+				panic(fmt.Sprintf("error : cfg op is invalid : %s", opStr))
 			}
 			configName = unquote(configName)
 			configValue = unquote(configValue)
 			switch configName {
 			case "INCLUDE_SOURCE":
-				data.Config.SourceIncludes = append(data.Config.SourceIncludes, configValue)
+				cli.Config.SourceIncludes = append(cli.Config.SourceIncludes, configValue)
 			case "RELOAD_FILE_TRIGGER":
-				data.Config.ReloadTriggerFiles = append(data.Config.ReloadTriggerFiles, configValue)
+				cli.Config.ReloadTriggerFiles = append(cli.Config.ReloadTriggerFiles, configValue)
 			case "AUTOGEN_OUTFILE":
-				data.Config.AutoGenOutfile = configValue
+				cli.Config.AutoGenOutfile = configValue
 			case "AUTOGEN_ARGS_VERBATIM":
 				configValue = strings.Replace(configValue, "--source", "", 1)
-				data.Config.AutoGenArgsVerbatim = configValue
-			default:
-				panic("unknown config key " + configName)
+				cli.Config.AutoGenArgsVerbatim = configValue
+			case "cli_name":
+				cli.cliName = configValue
 			}
-		} else {
-			panic("unknown add operation " + arg.argType)
+		case "pos":
+			arg := CliPositional{}
+
+			// -p=parser
+			if strings.HasPrefix(words[1], "-p=") {
+				if value, ok := tryOption(words[1], "-"); ok {
+					arg.parser = CliParserName(value)
+					words = append(words[:1], words[1+1:]...)
+				}
+			} else {
+				arg.parser = DefaultParser
+			}
+
+			for _, word := range words {
+				if value, ok := tryOption(word, "--choices"); ok {
+					arg.CompleteType = CompleteTypeChoices
+					arg.Choices = strings.Fields(value)
+				}
+				if value, ok := tryOption(word, "--closure"); ok {
+					arg.CompleteType = CompleteTypeClosure
+					arg.ClosureName = value
+				}
+			}
+
+			parsers.addPositional(arg)
+		case "opt":
+			opt := CliOptional{}
+
+			// -p=parser can come before name
+			if strings.HasPrefix(words[1], "-p=") {
+				if value, ok := tryOption(words[1], "-"); ok {
+					opt.parser = CliParserName(value)
+					words = append(words[:1], words[1+1:]...)
+				}
+			} else {
+				opt.parser = DefaultParser
+			}
+
+			opt.name = unquote(words[1])
+
+			for _, word := range words {
+				if value, ok := tryOption(word, "--choices"); ok {
+					opt.completeType = CompleteTypeChoices
+					opt.choices = strings.Fields(value)
+				}
+				if value, ok := tryOption(word, "--closure"); ok {
+					opt.completeType = CompleteTypeClosure
+					opt.closureName = value
+				}
+			}
+
+			parsers.addOptional(opt)
+		default:
+			panic(fmt.Sprintf("error : unknown operation : %s", opType))
 		}
-		arg.CompleteType = ""
 
-		if arg.argType == "pos" && strings.HasPrefix(arg.ArgName, "-") {
-			panic("invalid pos " + arg.ArgName)
-		}
-
-		for _, word := range words {
-			// --choices
-			if strings.HasPrefix(word, "--choices") {
-				choices := unquote(strings.Split(word, "=")[1])
-				arg.ValueChoices = strings.Fields(choices)
-				arg.CompleteType = "choices"
-			}
-
-			// --closure
-			if strings.HasPrefix(word, "--closure") {
-				closureName := unquote(strings.Split(word, "=")[1])
-				arg.CompleteType = "closure"
-				arg.ClosureName = closureName
-			}
-		}
-
-		if _, ok := data.Positionals[arg.Parser]; !ok {
-			data.Positionals[arg.Parser] = PositionalList{
-				Parser:      arg.Parser,
-				ParserClean: regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_"),
-			}
-		}
-		if _, ok := data.Options[arg.Parser]; !ok {
-			data.Options[arg.Parser] = OptionList{
-				Parser:      arg.Parser,
-				ParserClean: regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_"),
-			}
-		}
-
-		if _, ok := data.ParserNames[arg.Parser]; !ok {
-			data.ParserNames[arg.Parser] = regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(arg.Parser, "_")
-		}
-
-		if arg.argType == "opt" {
-			// options
-			if entryOption, ok := data.Options[arg.Parser]; ok {
-				entryOption.Items = append(entryOption.Items, arg)
-				data.Options[arg.Parser] = entryOption
-			}
-		} else if arg.argType == "pos" {
-			// positionals
-			if _, ok := positionalCounter[arg.Parser]; !ok {
-				positionalCounter[arg.Parser] = 0
-			}
-
-			positionalCounter[arg.Parser] = positionalCounter[arg.Parser] + 1
-			arg.PositionalNumber = positionalCounter[arg.Parser]
-
-			if entry, ok := data.Positionals[arg.Parser]; ok {
-				entry.Items = append(entry.Items, arg)
-				data.Positionals[arg.Parser] = entry
-			}
-		}
-	}
-	if scanner.Err() != nil {
-		panic(scanner.Err())
+		operationLinesParsed = append(operationLinesParsed, opStr)
 	}
 
-	for k := range data.Options {
-		if len(data.Options[k].Items) == 0 {
-			delete(data.Options, k)
-		}
-	}
-	for k := range data.Positionals {
-		if len(data.Positionals[k].Items) == 0 {
-			delete(data.Positionals, k)
-		}
+	cli.Parsers = &parsers
+	cli.operations = operationLinesParsed
+	return cli
+}
+
+func compileCli(cli Cli) (string, error) {
+	data := templateData{
+		Cli: cli,
 	}
 
 	// new template feature '\}}' chomps next newline rather than trim all whitespace '-}}'
@@ -281,13 +291,197 @@ func parseOperations(cliName string, operationsStr string) {
 	check(err)
 
 	var buffer bytes.Buffer
-	check(templateParsed.Execute(&buffer, data))
+	err = templateParsed.Execute(&buffer, data)
+	if err != nil {
+		re := regexp.MustCompile(`bctil-compile:(\d+):(\d+)`)
+		matches := re.FindStringSubmatch(err.Error())
+		col, _ := strconv.Atoi(matches[2])
+		return "", fmt.Errorf(
+			"error in template ./complete-template.go.sh:%s:%d: \n%s",
+			matches[1],
+			col+1,
+			err,
+		)
+	}
+
 	compiledShell := buffer.String()
 
+	// collapse multiple newlines into one
 	compiledShell = regexp.MustCompile(`(?m)^\s+\n`).ReplaceAllString(compiledShell, "\n")
 
-	_, err = os.Stdout.WriteString(compiledShell)
-	check(err)
+	return compiledShell, nil
+}
+
+func tryOption(word string, name string) (string, bool) {
+	if strings.HasPrefix(word, name) {
+		_, optionValue, valid := strings.Cut(word, "=")
+		if valid {
+			return unquote(optionValue), true
+		} else {
+			return "", true
+		}
+	} else {
+		return "", false
+	}
+}
+
+const (
+	CompleteTypeClosure = "closure"
+	CompleteTypeChoices = "choices"
+	DefaultParser       = "base"
+)
+
+type CliParserName string
+type CliParser struct {
+	parserName  CliParserName
+	positionals []CliPositional
+	optionals   []CliOptional
+}
+type CliParsers struct {
+	parserMap map[CliParserName]CliParser
+	parserSeq []CliParserName
+}
+
+func (parsers *CliParsers) addPositional(pos CliPositional) {
+	name := pos.parser
+	if parser, ok := parsers.parserMap[name]; ok {
+		pos.Number = len(parser.positionals) + 1
+		parser.positionals = append(parser.positionals, pos)
+		parsers.parserMap[name] = parser
+	} else {
+		parser = CliParser{
+			parserName:  name,
+			positionals: []CliPositional{},
+			optionals:   []CliOptional{},
+		}
+		pos.Number = len(parser.positionals) + 1
+		parser.positionals = append(parser.positionals, pos)
+		parsers.parserMap[name] = parser
+		parsers.parserSeq = append(parsers.parserSeq, name)
+		log.Printf("adding new parser %s for opt", name)
+	}
+}
+
+func (parsers *CliParsers) addOptional(opt CliOptional) {
+	name := opt.parser
+	if parser, ok := parsers.parserMap[name]; ok {
+		parser.optionals = append(parser.optionals, opt)
+		parsers.parserMap[name] = parser
+	} else {
+		parser = CliParser{
+			parserName:  name,
+			positionals: []CliPositional{},
+			optionals:   []CliOptional{},
+		}
+		parser.optionals = append(parser.optionals, opt)
+		parsers.parserMap[name] = parser
+		parsers.parserSeq = append(parsers.parserSeq, name)
+		log.Printf("adding new parser %s for opt", name)
+	}
+}
+
+func (parsers *CliParsers) parser(name CliParserName) CliParser {
+	if parser, ok := parsers.parserMap[name]; ok {
+		return parser
+	} else {
+		parser = CliParser{
+			parserName:  name,
+			positionals: []CliPositional{},
+			optionals:   []CliOptional{},
+		}
+		parsers.parserMap[name] = parser
+		parsers.parserSeq = append(parsers.parserSeq, name)
+		return parser
+	}
+}
+
+func (parser CliParser) NameClean() string {
+	return cleanShellIdentifier(string(parser.parserName))
+}
+
+func (parser CliParser) Positionals() []CliPositional {
+	return parser.positionals
+}
+
+func (parser CliParser) OptionalsNames() []string {
+	names := make([]string, len(parser.optionals))
+	for i, optional := range parser.optionals {
+		names[i] = optional.name
+	}
+	return names
+}
+
+func (parser CliParser) OptionalsData() map[string]string {
+	assoc := make(map[string]string, 0)
+	for _, optional := range parser.optionals {
+		if optional.completeType != "" {
+			assoc["__type__,"+optional.name] = optional.completeType
+			if optional.completeType == "choices" {
+				assoc["__value__,"+optional.name] = strings.Join(optional.choices, " ")
+			} else if optional.completeType == "closure" {
+				assoc["__value__,"+optional.name] = optional.closureName
+			}
+		}
+	}
+
+	return assoc
+}
+
+type CliPositional struct {
+	parser       CliParserName
+	Number       int
+	CompleteType string
+	ClosureName  string
+	Choices      []string
+}
+
+type CliOptional struct {
+	parser       CliParserName
+	name         string
+	completeType string
+	closureName  string
+	choices      []string
+}
+
+type CliConfig struct {
+	SourceIncludes      []string
+	ReloadTriggerFiles  []string
+	AutoGenArgsVerbatim string
+	AutoGenOutfile      string
+}
+
+type Cli struct {
+	cliName    string
+	Config     CliConfig
+	Parsers    *CliParsers
+	operations []string
+}
+
+func (c Cli) CliName() string {
+	return c.cliName
+}
+
+func (c Cli) CliNameClean() string {
+	return cleanShellIdentifier(c.cliName)
+}
+
+func (c Cli) OperationsComment() string {
+	return "# " + strings.Join(c.operations, "\n# ")
+}
+
+func cleanShellIdentifier(identifier string) string {
+	return regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(identifier, "")
+}
+
+// https://stackoverflow.com/a/47489825
+func splitOperation(op string) []string {
+	quoted := false
+	return strings.FieldsFunc(op, func(r rune) bool {
+		if r == '"' {
+			quoted = !quoted
+		}
+		return !quoted && r == ' '
+	})
 }
 
 func setupLogger() func() {

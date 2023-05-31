@@ -41,17 +41,43 @@ test-golang test_name="":
     run_tests
   done
 
+test2 test_name="":
+  #!/usr/bin/env bash
+  proj_dir="$PWD"
 
+  red="$(tput setaf 1)"
+  green="$(tput setaf 2)"
+  yellow="$(tput setaf 3)"
+  magenta="$(tput setaf 5)"
+  cyan="$(tput setaf 6)"
+  reset="$(printf "%b" "\033[0m")"
 
+  log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
   run_tests () {
-    test_call=(go test -v "./generators")
+    test_call=(go test -v ".")
     if [[ -n "{{test_name}}" ]]; then
       test_call+=(-run {{test_name}})
     fi
     echo "${test_call[*]}"
-    "${test_call[@]}"
+    "${test_call[@]}" \
+    | sed s/FAIL/"$red&$reset"/i \
+    | sed s/PASS/"$green&$reset"/i \
+    | sed s/WARNING/"$yellow&$reset"/i \
+    ;
+    if [[ "${PIPESTATUS[0]}" == 2 ]]; then
+      log "!!! go compilation error"
+    fi
     echo -e "${magenta}DONE${reset}: $(date '+%T.%3N')"
   }
+
+  run_tests
+  inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
+  --exclude "$proj_dir\/((compile|build|scratch.*|archive|\..*).*|.*(\.lock|~|\.log))$" \
+  | inotifywait_debounce 100 | \
+  while read -r dir events filename; do
+    echo "$dir$filename changed..."
+    run_tests
+  done
 
 pumpitcli:
   #!/usr/bin/env bash
@@ -75,7 +101,7 @@ pumpitcli:
   just build
   inotifywait_action
   inotifywait -q -m -r -e close_write,create,delete "$PWD" \
-  --exclude "$proj_dir\/((compile|build|.git|.idea)\/?|.*(\.lock|~|\.log))$" | \
+  --exclude ".*((compile|build|scratch.*|archive|\..*).*|.*(\.lock|~|\.log))$" | \
   inotifywait_debounce 100 | \
   while read -r dir events dir_file; do
     inotifywait_action "$dir/$dir_file"

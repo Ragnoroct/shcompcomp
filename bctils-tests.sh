@@ -117,6 +117,7 @@ run_tests() {
 
   __examplecli5_pos_1_completer() {
     mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
+    log "called"
   }
   current_suite "allow closure for positionals"
   bctils_cli_register "examplecli5"
@@ -210,6 +211,13 @@ EOF
   bctils_autogen - --lang=py --cliname "examplecli11" --source --closurepipe closure_pipe_func \
   --watch-file "/tmp/bctils-first-watch1" --watch-file "/tmp/bctils-second-watch1"
 #  expect_complete_compreply "examplecli11 " "--awesome"
+
+  current_suite "new cli"
+  cat - << EOF | bctils
+    cfg cli_name=boman
+    opt "-h"
+    opt "--help"
+EOF
 
   current_suite "source ~/.bashrc is FAST with MANY 'autogen calls'"
 
@@ -646,7 +654,8 @@ else
   __bctilstest_kill_other_procs
   __bctilstest_buildgolang && __bctils_test_run_test_script
   inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
-    --exclude "$proj_dir/((compile|build|.git|.idea)/.*|.*\.log)" |
+    --exclude "$proj_dir/((compile|build|.git|.idea)/.*|.*\.log)" | \
+    inotifywait_debounce 150 |
     while read -r watch_file events dir_file; do
       __bctilstest_inotify_loop "$watch_file" "$events" "$dir_file"
     done
