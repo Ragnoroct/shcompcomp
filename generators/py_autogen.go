@@ -5,6 +5,7 @@ import (
 	"fmt"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
+	"io"
 	"os"
 	"strings"
 )
@@ -12,11 +13,20 @@ import (
 var lang *sitter.Language
 
 func GeneratePythonOperations(srcFile string, argsVerbatim string, outFile string, extraWatchFiles []string) string {
-	content, err := os.ReadFile(srcFile)
-	if err != nil {
-		fmt.Println("failed to read file: " + srcFile)
-		os.Exit(1)
+	var content []byte
+	var err error
+
+	if srcFile == "-" {
+		content, err = io.ReadAll(os.Stdin)
+		check(err)
+	} else {
+		content, err = os.ReadFile(srcFile)
+		if err != nil {
+			fmt.Println("failed to read file: " + srcFile)
+			os.Exit(1)
+		}
 	}
+
 	operations := parseSrc(string(content))
 	operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_ARGS_VERBATIM="%s"`, argsVerbatim))
 	operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_OUTFILE="%s"`, outFile))

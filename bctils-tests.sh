@@ -196,6 +196,24 @@ EOF
   current_suite "bctils_autogen caches on md5 in variable"
   current_suite "bctils_autogen caches on md5 in file"
 
+  current_suite "bctils_autogen takes a closure function to generate the source to analyze"
+  closure_pipe_func () {
+      cat <<EOF
+from argparse import ArgumentParser
+parser = ArgumentParser()
+parser.add_argument("--awesome")
+EOF
+  }
+  bctils_autogen - --lang=py --cliname "examplecli11" --source --closurepipe closure_pipe_func \
+  --watch-file "/tmp/bctils-first-watch1" --watch-file "/tmp/bctils-first-watch1"
+#  expect_complete_compreply "examplecli11 " "--awesome"
+
+  current_suite "source ~/.bashrc is FAST"
+
+  current_suite "cache all compiles"
+  current_suite "move tests into golang environment"
+  current_suite "adding to .bashrc and removing it still adds time and is accumalative"
+
   current_suite "positionals without hints are recognized countwise"
 
   current_suite "py_autogen detect disabling --help/-h"

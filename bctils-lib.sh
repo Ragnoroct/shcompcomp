@@ -1,9 +1,14 @@
-log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+#!/usr/bin/bash
+
+log () { "$DEBUG" && echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
 errmsg () { echo "$@" 1>&2; }
 
 declare -g bctils_err=""
 
 BCTILS_COMPILE_DIR="${BCTILS_COMPILE_DIR:-"$HOME/.config/bctils"}"
+BCTILS_BIN_PATH="$(which bctils)"
+BCTILS_SH_PATH="$(realpath "${BASH_SOURCE[0]}")"
+DEBUG=false
 
 bctils_cli_register () {
   local cli_name="$1"
@@ -122,18 +127,25 @@ bctils_cli_compile () {
   fi
 }
 
+# todo: sourcing 6ms
+# todo: bctils_autogen call 11ms (cached)
 bctils_autogen () {
   local args_verbatim
   args_verbatim="${FUNCNAME[0]} $(printf " %q" "${@}")"
-
+  local -a watchfiles=()
   local -A options=()
   local -a args=("$0")
-  if ! TEMP=$(getopt -o '-h' --longoptions 'source,lang:,outfile:' -- "$@"); then errmsg "failed to parse args"; return 1; fi
+  if ! TEMP=$(getopt -o '-h' --longoptions 'source,lang:,outfile:,closurepipe:,watch-file:,cliname:' -- "$@"); then errmsg "failed to parse args"; return 1; fi
   eval set -- "$TEMP"; unset TEMP
   while true; do
     case "$1" in
+      "--cliname")
+        options["cliname"]="$2"; shift 2 ;;
+      "--watch-file")
+        watchfiles+=("$2"); shift 2;;
+      "--closurepipe")
+        options["closurepipe"]="$2"; shift 2 ;;
       "--outfile")
-        echo "setting outfile: $2"
         options["outfile"]="$2"; shift 2 ;;
       "--lang")
         options["lang"]="$2"; shift 2 ;;
@@ -146,26 +158,51 @@ bctils_autogen () {
 
   lang="${options["lang"]}"
   files=("${args[@]:1}")
-  cli_name="$(basename "${files[0]}")"
+  cli_name="${options[cliname]:-"$(basename "${files[0]}")"}"
   out_file="${options[outfile]:-"$BCTILS_COMPILE_DIR/${cli_name}_complete.sh"}"
+  local cli_name_clean="${cli_name//[^[:alnum:]]/_}"
 
   log "$cli_name : ${lang} autogen for files : ${files[*]}"
-  mkdir -p "$(dirname "$out_file")"
-
-  autogen_args=(
-    -autogen-lang py
-    -autogen-src "${files[0]}"
-    -autogen-outfile "$out_file"
-    -autogen-extra-watch "$(which bctils)"  # todo: cache this at top
-    -autogen-extra-watch "$(realpath "${BASH_SOURCE[0]}")"
-    "$cli_name"
-    "$args_verbatim"
-  )
-  if ! bctils "${autogen_args[@]}" > "$out_file"
+  reload_files=( "${files[@]}" "$BCTILS_BIN_PATH" "$BCTILS_SH_PATH" "${watchfiles[@]}")
+  cache_file="$HOME/.cache/bctils_autogen_md5_nonreload_$cli_name_clean"
+  reload_files_md5="$(stat  --printf '%Y' "${reload_files[@]}")"  # 2-3ms
+  cache_content="$(cat "$cache_file" 2>/dev/null)"                # 3ms
+  if [[ "$cache_content" != "$reload_files_md5" ]]
   then
-    # shellcheck disable=SC2034
-    bctils_err="bctils autogen failed"
-    return
+    autogen_args=(
+      -autogen-lang py
+      -autogen-src "${files[0]}"
+      -autogen-outfile "$out_file"
+      -autogen-extra-watch "$(which bctils)"  # todo: cache this at top
+      -autogen-extra-watch "$(realpath "${BASH_SOURCE[0]}")"
+    )
+    for watchfile in "${watchfiles[@]}"; do
+      autogen_args+=(-autogen-extra-watch "$watchfile")
+    done
+    autogen_args+=("$cli_name" "$args_verbatim")
+
+    if [[ -n "${options[closurepipe]}" ]]; then
+      local out_dir
+      out_dir="$(dirname "$out_file")"
+      if [[ ! -d "$out_dir" ]]; then
+        mkdir -p "$out_dir"
+      fi
+
+      if ! "${options[closurepipe]}" | bctils "${autogen_args[@]}" > "$out_file"
+      then
+        # shellcheck disable=SC2034
+        bctils_err="bctils autogen failed"
+        return 1
+      fi
+    else
+      if ! bctils "${autogen_args[@]}" > "$out_file"
+      then
+        # shellcheck disable=SC2034
+        bctils_err="bctils autogen failed"
+        return 1
+      fi
+    fi
+    echo "$reload_files_md5" > "$cache_file"
   fi
 
   if [[ "${options["source"]}" == 1 ]]; then
