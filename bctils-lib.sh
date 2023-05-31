@@ -165,7 +165,7 @@ bctils_autogen () {
   log "$cli_name : ${lang} autogen for files : ${files[*]}"
   reload_files=( "${files[@]}" "$BCTILS_BIN_PATH" "$BCTILS_SH_PATH" "${watchfiles[@]}")
   cache_file="$HOME/.cache/bctils_autogen_md5_nonreload_$cli_name_clean"
-  reload_files_md5="$(stat  --printf '%Y' "${reload_files[@]}")"  # 2-3ms
+  reload_files_md5="$(stat  --printf '%.9Y' "${reload_files[@]}")"  # 2-3ms
   cache_content="$(cat "$cache_file" 2>/dev/null)"                # 3ms
   if [[ "$cache_content" != "$reload_files_md5" ]]
   then

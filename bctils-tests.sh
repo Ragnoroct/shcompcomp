@@ -189,6 +189,7 @@ subparsers = parser.add_subparsers()
 parser_cmd = subparsers.add_parser("sub-cmd-name")
 parser_cmd.add_argument("arg1", choices=["c4", "c5", "c6"])
 EOF
+  sleep 0.001 # 1ms
   expect_complete_compreply "examplecli10.py sub-cmd-name " "c4 c5 c6"
   expect_complete_compreply "examplecli10.py " "sub-cmd-name --some-way2"
   expect_complete_compreply "examplecli10.py --some" "--some-way2"
@@ -197,6 +198,8 @@ EOF
   current_suite "bctils_autogen caches on md5 in file"
 
   current_suite "bctils_autogen takes a closure function to generate the source to analyze"
+  touch /tmp/bctils-first-watch1
+  touch /tmp/bctils-second-watch1
   closure_pipe_func () {
       cat <<EOF
 from argparse import ArgumentParser
@@ -205,10 +208,10 @@ parser.add_argument("--awesome")
 EOF
   }
   bctils_autogen - --lang=py --cliname "examplecli11" --source --closurepipe closure_pipe_func \
-  --watch-file "/tmp/bctils-first-watch1" --watch-file "/tmp/bctils-first-watch1"
+  --watch-file "/tmp/bctils-first-watch1" --watch-file "/tmp/bctils-second-watch1"
 #  expect_complete_compreply "examplecli11 " "--awesome"
 
-  current_suite "source ~/.bashrc is FAST"
+  current_suite "source ~/.bashrc is FAST with MANY 'autogen calls'"
 
   current_suite "cache all compiles"
   current_suite "move tests into golang environment"
