@@ -1,7 +1,7 @@
 package testutil
 
 import (
-	"bctils/lib"
+	"bctils/pkg/lib"
 	"bytes"
 	"io"
 	"os"

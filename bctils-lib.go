@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bctils/generators"
-	"bctils/lib"
+	"bctils/pkg/generators"
+	"bctils/pkg/lib"
 	"bufio"
 	_ "embed"
 	"flag"
