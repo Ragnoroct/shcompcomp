@@ -1,20 +1,74 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"github.com/go-cmd/cmd"
 	"io"
+	"os/exec"
 	"strings"
+	"sync"
 )
 
+var bashOutBuffer []byte
+var chanBashDone chan string
+var stdin *io.WriteCloser
+var mutex sync.Mutex
+
 func main() {
-	startProcess()
+	shellCode := getTestShellCode()
+	chanBashDone = make(chan string)
+	startProcess(shellCode)
+	completeCmd("simple asdf ")
 }
 
-func startProcess() {
-	shellCode := dedent(`
+func completeCmd(cmdString string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	_, _ = io.WriteString(*stdin, cmdString+"\n")
+	out := <-chanBashDone
+	fmt.Printf("output: %s", out)
+}
+
+func startProcess(shellCode string) {
+	var err error
+	subProcess := exec.Command("bash", "-c", shellCode)
+	subProcessStdin, err := subProcess.StdinPipe()
+	check(err)
+	stdout, err := subProcess.StdoutPipe()
+	check(err)
+
+	err = subProcess.Start()
+	check(err)
+
+	stdin = &subProcessStdin
+
+	go func() {
+		var err error
+		var n int
+		buff := make([]byte, 256)
+		for err == nil {
+			n, err = stdout.Read(buff)
+			for i := 0; i < n; i++ {
+				if buff[i] == '\x00' {
+					out := string(bashOutBuffer)
+					bashOutBuffer = []byte{}
+					chanBashDone <- out
+				} else {
+					bashOutBuffer = append(bashOutBuffer, buff[i])
+				}
+			}
+		}
+	}()
+}
+
+func getTestShellCode() string {
+	return `
+		very_simple () {
+			COMPREPLY=("c1" "c2" "c3")
+		}
+
+		complete -F very_simple simple
+
 		complete_cmd_str() {
 			local input_line="$1"
 			declare -g complete_cmd_str_result
@@ -46,61 +100,9 @@ func startProcess() {
 
 		while read -r line; do
 			complete_cmd_str "$line"
-			printf '\0\n'
+			printf '\0'
 		done
-	`)
-
-	// Disable output buffering, enable streaming
-	cmdOptions := cmd.Options{
-		Buffered:  false,
-		Streaming: true,
-	}
-
-	// Create Cmd with options
-	envCmd := cmd.NewCmdOptions(cmdOptions, "bash", "-c", shellCode)
-
-	// Print STDOUT and STDERR lines streaming from Cmd
-	doneChan := make(chan struct{})
-	go func() {
-		defer close(doneChan)
-		for envCmd.Stdout != nil || envCmd.Stderr != nil {
-			select {
-			case line, open := <-envCmd.Stdout:
-				if !open {
-					envCmd.Stdout = nil
-					continue
-				}
-				fmt.Print(line)
-			case line, open := <-envCmd.Stderr:
-				if !open {
-					envCmd.Stderr = nil
-					continue
-				}
-				fmt.Print(line)
-			}
-		}
-	}()
-
-	var stdin bytes.Buffer
-	doneProcChan := envCmd.StartWithStdin(&stdin)
-
-	stdin.Write([]byte("asdf1\n"))
-	stdin.Write([]byte("asdf2\n"))
-
-	<-doneProcChan
-	<-doneChan
-}
-
-func write(stdin io.WriteCloser, content string) {
-	_, _ = io.WriteString(stdin, content)
-}
-
-func readOutputRoutine(output chan string, rc io.ReadCloser) {
-	r := bufio.NewReader(rc)
-	for {
-		x, _ := r.ReadString('\n')
-		output <- x
-	}
+	`
 }
 
 func dedent(str string) string {
@@ -144,8 +146,8 @@ func dedent(str string) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-func check(e error) {
-	if e != nil {
-		panic(e)
+func check(err error) {
+	if err != nil {
+		panic(err)
 	}
 }
