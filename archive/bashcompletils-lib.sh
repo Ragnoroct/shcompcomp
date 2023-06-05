@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # todo: performance add debug conditional
-log() { echo -e "$(date --iso-8601=ns) $*" >> ~/mybash.log; }
+log() { echo -e "$(date --iso-8601=ns) $*" >> ~/bashscript.log; }
 
 _bct_script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 declare -A commands_config
@@ -166,7 +166,7 @@ bctils_v2_cli_compile () {
 
   cat <<'EOF' | __bctils_dedent >> "$out_file"
     #!/usr/bin/env bash
-    log() { echo -e "$(date --iso-8601=ns) $*" >> ~/mybash.log; }
+    log() { echo -e "$(date --iso-8601=ns) $*" >> ~/bashscript.log; }
     
     __bctils_v2_autocomplete_{{cli_name_clean}} () {
         {{str_options_vars:multiline}}

@@ -1,6 +1,5 @@
 #!/usr/bin/bash
 
-log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
 errmsg () { echo "$@" 1>&2; }
 
 declare -g bctils_err=""

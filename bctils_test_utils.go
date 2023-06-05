@@ -49,6 +49,7 @@ func (ctx TestContext) Run(name string, testFunc func(ctx TestContext)) {
 }
 
 func dedent(str string) string {
+	mixingSpacesAndTabs := false
 	if str[0] == '\n' {
 		str = str[1:]
 	}
@@ -57,7 +58,9 @@ func dedent(str string) string {
 	for _, line := range lines {
 		for i, c := range line {
 			if c == ' ' {
-				panic("cannot handle mixing spaces with tab")
+				mixingSpacesAndTabs = true
+				//panic("cannot handle mixing spaces with tab")
+				continue
 			} else if c != '\t' {
 				if minIndent == -1 || i < minIndent {
 					minIndent = i
@@ -65,6 +68,12 @@ func dedent(str string) string {
 				break
 			}
 		}
+	}
+
+	if minIndent == 0 {
+		return strings.TrimSpace(str) + "\n"
+	} else if mixingSpacesAndTabs {
+		panic("cannot handle mixing spaces with tab")
 	}
 
 	indentStr := strings.Repeat("\t", minIndent)

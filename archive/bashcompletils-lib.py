@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 from io import StringIO
 
 basicConfig(
-    filename=Path.home() / "mybash.log",
+    filename=Path.home() / "bashscript.log",
     format="%(asctime)s.%(msecs)03d %(msg)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
     force=True

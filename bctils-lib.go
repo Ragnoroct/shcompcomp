@@ -485,7 +485,7 @@ func splitOperation(op string) []string {
 }
 
 func setupLogger() func() {
-	f, err := os.OpenFile("/home/willy/mybash.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
+	f, err := os.OpenFile("/home/willy/bashscript.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
 	check(err)
 	log.SetOutput(f)
 	log.SetFlags(0)

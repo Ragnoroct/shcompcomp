@@ -219,6 +219,8 @@ EOF
     opt "--help"
 EOF
 
+  current_suite "custom log"
+
   current_suite "source ~/.bashrc is FAST with MANY 'autogen calls'"
 
   current_suite "cache all compiles"

@@ -14,7 +14,7 @@ cli_name="$(echo "$starting_command" | cut -d' ' -f1)"
 cli_dir="$(dirname "$(which "$cli_name")")"
 starting_dir="$(realpath "$2")"
 
-log() { echo -e "$(date --iso-8601=ns) $*" >> ~/mybash.log; }
+log() { echo -e "$(date --iso-8601=ns) $*" >> ~/bashscript.log; }
 
 script_watcher() {
     inotifywait -q -m -r -e modify,delete,create "$auto_complete_script" | \
@@ -41,7 +41,7 @@ tmux new-session -d -s "completer-session" -n "completer-window"
 
 # pane: logs
 tmux split-window -h -t '=completer-session:=completer-window'
-tmux send-keys -t '=completer-session:=completer-window.1' 'tail -f ~/mybash.log' Enter
+tmux send-keys -t '=completer-session:=completer-window.1' 'tail -f ~/bashscript.log' Enter
 
 # source from start
 # todo: combine this

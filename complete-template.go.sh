@@ -2,8 +2,8 @@
 
 {{- /*gotype: bctils.templateData*/ -}}
 
-log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
-log_everything () { if [[ "{{.Cli.CliNameClean}}" == "$1" ]]; then exec >> ~/mybash.log; exec 2>&1; set -x; fi; }
+log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
+log_everything () { if [[ "{{.Cli.CliNameClean}}" == "$1" ]]; then exec >> ~/bashscript.log; exec 2>&1; set -x; fi; }
 
 {{.OperationsComment}}
 

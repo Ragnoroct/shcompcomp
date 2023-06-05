@@ -15,7 +15,7 @@ test-golang test_name="":
   cyan="$(tput setaf 6)"
   reset="$(printf "%b" "\033[0m")"
 
-  log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+  log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
   run_tests () {
     test_call=(go test -v "./generators")
     if [[ -n "{{test_name}}" ]]; then
@@ -52,7 +52,7 @@ test2 test_name="":
   cyan="$(tput setaf 6)"
   reset="$(printf "%b" "\033[0m")"
 
-  log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/mybash.log; }
+  log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
   run_tests () {
     test_call=(go test -v ".")
     if [[ -n "{{test_name}}" ]]; then
@@ -60,9 +60,9 @@ test2 test_name="":
     fi
     echo "${test_call[*]}"
     "${test_call[@]}" \
-    | sed s/FAIL/"$red&$reset"/i \
-    | sed s/PASS/"$green&$reset"/i \
-    | sed s/WARNING/"$yellow&$reset"/i \
+    | sed -u s/FAIL/"$red&$reset"/i \
+    | sed -u s/PASS/"$green&$reset"/i \
+    | sed -u s/WARNING/"$yellow&$reset"/i \
     ;
     if [[ "${PIPESTATUS[0]}" == 2 ]]; then
       log "!!! go compilation error"
@@ -78,6 +78,9 @@ test2 test_name="":
     echo "$dir$filename changed..."
     run_tests
   done
+
+remaining arguments are names of input files; if no input files are
+specified, then the standard input is read.
 
 pumpitcli:
   #!/usr/bin/env bash
@@ -109,6 +112,8 @@ pumpitcli:
 
 logs:
   #!/usr/bin/env bash
+  log_file="$HOME/bashscript.log"
+  echo "tailing: $log_file"
   red="$(tput setaf 1)"
   green="$(tput setaf 2)"
   yellow="$(tput setaf 3)"
@@ -116,7 +121,7 @@ logs:
   magenta="$(tput setaf 5)"
   cyan="$(tput setaf 6)"
   reset="$(printf "%b" "\033[0m")"
-  tail -f ~/mybash.log \
+  tail -f "$log_file" \
   | sed -u s/"go compilation error"/"$red&$reset"/i \
   | sed -u s/"RUNNING TESTS"/"$magenta&$reset"/i \
   | sed -u s/"RESULTS FAIL"/"$red&$reset"/i \
