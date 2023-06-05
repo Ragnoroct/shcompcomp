@@ -79,9 +79,6 @@ test2 test_name="":
     run_tests
   done
 
-remaining arguments are names of input files; if no input files are
-specified, then the standard input is read.
-
 pumpitcli:
   #!/usr/bin/env bash
   inotifywait_action () {
@@ -125,6 +122,7 @@ logs:
   | sed -u s/"go compilation error"/"$red&$reset"/i \
   | sed -u s/"RUNNING TESTS"/"$magenta&$reset"/i \
   | sed -u s/"RESULTS FAIL"/"$red&$reset"/i \
+  | sed -u s/"\(FAIL\)\(.*\)\(test.*\)"/"$red\1$reset\2$cyan\3$reset"/i \
   | sed -u s/"FAIL"/"$red&$reset"/i \
   | sed -u s/"=== TEST .*"/"$cyan&$reset"/i \
   | sed -u s/PASS/"$green&$reset"/i \

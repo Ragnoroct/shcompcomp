@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-{{- /*gotype: bctils.templateData*/ -}}
+{{/*gotype: bctils.templateData*/}}
 
 log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
 log_everything () { if [[ "{{.Cli.CliNameClean}}" == "$1" ]]; then exec >> ~/bashscript.log; exec 2>&1; set -x; fi; }
@@ -29,6 +29,7 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
   {{ end }}
   {{- end }}
 
+  # todo: fix _get_comp_words_by_ref dependency on bash-completion
   # shellcheck disable=SC2034
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
@@ -77,7 +78,6 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
   else
     parser="$current_parser_clean"
   fi
-
 
   local -n option_complete_data="_option_${parser}_data"
   if [[ -v option_complete_data[@] && -v "option_complete_data[__type__,$previous_word]" ]]; then
@@ -164,4 +164,3 @@ complete -F __bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} -o n
 # todo: add closure validation when sourcing
 complete -F __bctils_v2_autocomplete_{{ .Cli.CliNameClean }} -o nospace "{{ .Cli.CliName }}"
 {{end}}
-

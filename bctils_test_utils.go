@@ -43,7 +43,8 @@ func (ctx TestContext) Run(name string, testFunc func(ctx TestContext)) {
 
 	onBefore(ctx.t)
 	passed := ctx.t.Run(name, func(t *testing.T) {
-		testFunc(ctx)
+		ctxSubTest := TestContext{t: t}
+		testFunc(ctxSubTest)
 	})
 	onAfter(ctx.t, passed)
 }

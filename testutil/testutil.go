@@ -1,36 +1,41 @@
-package main
+package testutil
 
 import (
-	"fmt"
+	"bctils/lib"
+	"bytes"
 	"io"
+	"os"
 	"os/exec"
+	"path"
+	"regexp"
 	"strings"
 	"sync"
+	"testing"
 )
 
 var mutex sync.Mutex
 
-type completerProcess struct {
+type CompleterProcess struct {
 	stdin   *io.WriteCloser
 	chanOut chan string
 	mutex   sync.Mutex
 }
 type completerProcesses struct {
-	processMap map[string]*completerProcess
+	processMap map[string]*CompleterProcess
 }
 
 var processes completerProcesses
 
-func newCompleter(completeShell string) *completerProcess {
+func Completer(completeShell string) *CompleterProcess {
 	if processes.processMap == nil {
-		processes.processMap = make(map[string]*completerProcess)
+		processes.processMap = make(map[string]*CompleterProcess)
 	}
 	completeShell = dedent(completeShell)
 	if process, ok := processes.processMap[completeShell]; ok {
 		return process
 	} else {
 		chanOut, stdin := startProcess(completeShell)
-		process = &completerProcess{
+		process = &CompleterProcess{
 			chanOut: chanOut,
 			stdin:   stdin,
 			mutex:   sync.Mutex{},
@@ -41,7 +46,7 @@ func newCompleter(completeShell string) *completerProcess {
 	}
 }
 
-func (p *completerProcess) complete(cmdStr string) string {
+func (p *CompleterProcess) Complete(cmdStr string) string {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -50,15 +55,38 @@ func (p *completerProcess) complete(cmdStr string) string {
 	return strings.TrimRight(out, " \t\n")
 }
 
-func main() {
-	completer := newCompleter(`
-		very_simple () {
-			COMPREPLY=("c1" "c2" "c4")
-		}
-		complete -F very_simple simple
-	`)
-	out := completer.complete("simple ")
-	fmt.Printf("out: '%s'", out)
+func ParseOperationsStdinHelper(operations string) string {
+	var stdin bytes.Buffer
+	operations = dedent(operations)
+	stdin.Write([]byte(operations))
+	return lib.ParseOperationsStdin(&stdin)
+}
+
+func ExpectComplete(t *testing.T, shell string, cmdStr string, expected string) {
+	t.Helper()
+	completer := Completer(shell)
+	actual := strings.TrimRight(completer.Complete(cmdStr), "\n \t")
+	if actual != expected {
+		testname := t.Name()
+		pwd, _ := os.Getwd()
+		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
+		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
+		testname = strings.ToLower(testname)
+		testname += ".bash"
+		compilePath := path.Join(pwd, "compile/"+testname)
+		_ = os.WriteFile(compilePath, []byte(shell), 0644)
+
+		t.Fatalf(
+			"\n%s\n"+
+				"     cmd: '%s'\n"+
+				"  actual: '%s'\n"+
+				"expected: '%s'\n",
+			"./"+strings.TrimPrefix(compilePath, pwd+"/")+":0:",
+			cmdStr,
+			actual,
+			expected,
+		)
+	}
 }
 
 func startProcess(shellCode string) (chan string, *io.WriteCloser) {
@@ -86,7 +114,7 @@ func startProcess(shellCode string) (chan string, *io.WriteCloser) {
 			COMP_WORDS=("${comp_words[@]}")
 			COMP_CWORD="$((${#comp_words[@]} - 1))"
 			COMP_POINT="$(("${#input_line}" + 0))"
-			
+
 			complete_func="$(complete -p "$cmd_name" | awk '{print $(NF-1)}')"
 			__bctilstest_compopt_current_cmd="$cmd_name"
 			"$complete_func" &>/tmp/bashcompletils.out
@@ -96,7 +124,13 @@ func startProcess(shellCode string) (chan string, *io.WriteCloser) {
 			printf '%s\n' "${COMPREPLY[*]}"
 		}
 
-		while read -r line; do
+		if [ -f /usr/share/bash-completion/bash_completion ]; then
+			source /usr/share/bash-completion/bash_completion
+		elif [ -f /etc/bash_completion ]; then
+			source /etc/bash_completion
+		fi
+
+		while IFS= read -r line; do
 			complete_cmd_str "$line"
 			printf '\0'
 		done
