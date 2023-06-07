@@ -133,12 +133,25 @@ type CliOptional struct {
 	choices      []string
 }
 
+type ReloadTrigger struct {
+	File      string
+	Timestamp int64
+}
+
+func (r ReloadTrigger) String() string {
+	return r.File
+}
+
 type CliConfig struct {
-	Outfile             string
-	SourceIncludes      []string
-	ReloadTriggerFiles  []string
-	AutoGenArgsVerbatim string
-	AutoGenOutfile      string
+	Outfile               string
+	AutogenLang           string
+	AutogenClosureFunc    string
+	AutogenClosureSource  string
+	AutogenReloadTriggers []ReloadTrigger
+	SourceIncludes        []string // deprecated
+	ReloadTriggerFiles    []string // deprecated
+	AutoGenArgsVerbatim   string   // deprecated
+	AutoGenOutfile        string   // deprecated
 }
 
 func (c Cli) CliName() string {
@@ -150,14 +163,24 @@ func (c Cli) CliNameClean() string {
 }
 
 func (c Cli) OperationsComment() string {
-	return "# " + strings.Join(c.operations, "\n# ")
+	return "# " + strings.Join(c.Operations, "\n# ")
+}
+
+func (c Cli) OperationsReloadConfig() []string {
+	configOperations := make([]string, 0)
+	for _, opt := range c.Operations {
+		if strings.HasPrefix(opt, "cfg ") || strings.HasPrefix(opt, "int ") {
+			configOperations = append(configOperations, opt)
+		}
+	}
+	return configOperations
 }
 
 type Cli struct {
 	cliName    string
 	Config     CliConfig
 	Parsers    *CliParsers
-	operations []string
+	Operations []string
 }
 
 type Argument struct {
@@ -174,19 +197,6 @@ type OptionList struct {
 	Parser      string
 	ParserClean string
 	Items       []Argument
-}
-
-type PositionalList struct {
-	Parser      string
-	ParserClean string
-	Items       []Argument
-}
-
-type Config struct {
-	SourceIncludes      []string
-	ReloadTriggerFiles  []string
-	AutoGenArgsVerbatim string
-	AutoGenOutfile      string
 }
 
 type templateData struct {
@@ -211,7 +221,15 @@ func (d templateData) Parsers() []CliParser {
 }
 
 func (d templateData) OperationsComment() string {
-	return "# " + strings.Join(d.Cli.operations, "\n# ")
+	return "# " + strings.Join(d.Cli.Operations, "\n# ")
+}
+
+func (d templateData) StringsJoin(values []string, indent int) string {
+	if len(values) == 0 {
+		return ""
+	}
+	indentStr := strings.Repeat(" ", indent)
+	return strings.Join(values, "\n"+indentStr)
 }
 
 func ParseOperationsStdin(stdin io.Reader) string {
@@ -233,7 +251,7 @@ func ParseOperations(operationsStr string) Cli {
 	}
 	var operationLinesParsed []string
 	operationLines := strings.Split(operationsStr, "\n")
-	for _, opStr := range operationLines {
+	for opIndex, opStr := range operationLines {
 		opStr = strings.TrimSpace(opStr)
 		if opStr == "" {
 			continue
@@ -241,8 +259,11 @@ func ParseOperations(operationsStr string) Cli {
 
 		words := splitOperation(opStr)
 		opType := words[0]
+		var intOperations []string
 
 		switch opType {
+		case "int":
+			continue
 		case "cfg":
 			configName, configValue, valid := strings.Cut(unquote(words[1]), "=")
 			if !valid {
@@ -264,6 +285,34 @@ func ParseOperations(operationsStr string) Cli {
 				cli.cliName = configValue
 			case "outfile":
 				cli.Config.Outfile = configValue
+			case "autogen_lang":
+				cli.Config.AutogenLang = configValue
+			case "autogen_closure_func":
+				cli.Config.AutogenClosureFunc = configValue
+			case "autogen_closure_source":
+				cli.Config.AutogenClosureSource = configValue
+			case "autogen_reload_trigger":
+				reloadTrigger := ReloadTrigger{
+					File:      configValue,
+					Timestamp: 0,
+				}
+				if len(operationLines) > opIndex+1 {
+					nextOp := strings.TrimSpace(operationLines[opIndex+1])
+					if strAfter, found := strings.CutPrefix(nextOp, "int autogen_reload_trigger_ts="); found {
+						timestamp, _ := strconv.Atoi(strAfter)
+						reloadTrigger.Timestamp = int64(timestamp)
+					}
+				}
+				cli.Config.AutogenReloadTriggers = append(cli.Config.AutogenReloadTriggers, reloadTrigger)
+
+				if reloadTrigger.Timestamp == 0 {
+					fileInfo, err := os.Stat(configValue)
+					reloadTrigger.Timestamp = fileInfo.ModTime().UnixMilli()
+					if err != nil {
+						panic(err)
+					}
+				}
+				intOperations = append(intOperations, fmt.Sprintf("int autogen_reload_trigger_ts=%d", reloadTrigger.Timestamp))
 			}
 		case "pos":
 			arg := CliPositional{}
@@ -322,10 +371,13 @@ func ParseOperations(operationsStr string) Cli {
 		}
 
 		operationLinesParsed = append(operationLinesParsed, opStr)
+		if intOperations != nil {
+			operationLinesParsed = append(operationLinesParsed, intOperations...)
+		}
 	}
 
 	cli.Parsers = &parsers
-	cli.operations = operationLinesParsed
+	cli.Operations = operationLinesParsed
 	return cli
 }
 
@@ -531,4 +583,47 @@ func BashArray(values []string, indent int) string {
 		}
 		return "(\n" + strings.Join(arrayLines, "\n") + "\n" + indentStr + ")"
 	}
+}
+
+func Dedent(str string) string {
+	mixingSpacesAndTabs := false
+	if len(str) == 0 {
+		return str
+	}
+	if str[0] == '\n' {
+		str = str[1:]
+	}
+	lines := strings.Split(str, "\n")
+	minIndent := -1
+	for _, line := range lines {
+		for i, c := range line {
+			if c == ' ' {
+				mixingSpacesAndTabs = true
+				continue
+			} else if c != '\t' {
+				if minIndent == -1 || i < minIndent {
+					minIndent = i
+				}
+				break
+			}
+		}
+	}
+
+	if minIndent == 0 {
+		return strings.TrimSpace(str) + "\n"
+	} else if mixingSpacesAndTabs {
+		panic("cannot handle mixing spaces with tab")
+	}
+
+	indentStr := strings.Repeat("\t", minIndent)
+	for i := range lines {
+		newLine, _ := strings.CutPrefix(lines[i], indentStr)
+		lines[i] = newLine
+	}
+
+	if strings.Trim(lines[len(lines)-1], " \t\n") == "" {
+		lines = lines[0 : len(lines)-1]
+	}
+
+	return strings.Join(lines, "\n") + "\n"
 }

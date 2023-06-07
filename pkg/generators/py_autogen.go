@@ -1,16 +1,60 @@
 package generators
 
 import (
+	"bctils/pkg/lib"
 	"context"
 	"fmt"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
+	"sync"
 )
 
 var lang *sitter.Language
+
+func GeneratePythonOperations2(cli lib.Cli) lib.Cli {
+	var operations = cli.Operations
+	//operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_ARGS_VERBATIM="%s"`, argsVerbatim))
+	//operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_OUTFILE="%s"`, outFile))
+	//operations = append(operations, fmt.Sprintf(`cfg RELOAD_FILE_TRIGGER="%s"`, srcFile))
+
+	if cli.Config.AutogenClosureFunc != "" {
+		src := callBashClosureFunc(cli.Config.AutogenClosureSource, cli.Config.AutogenClosureFunc)
+		operations = append(operations, parseSrc(src)...)
+	}
+
+	cli = lib.ParseOperations(strings.Join(operations, "\n"))
+	return cli
+}
+
+func CheckReload(stdin io.Reader, stdout io.Writer, stderr io.Writer) bool {
+	content, err := io.ReadAll(stdin)
+	lib.Check(err)
+	cli := lib.ParseOperations(string(content))
+	shouldReload := false
+	for _, triggerFile := range cli.Config.AutogenReloadTriggers {
+		fileInfo, _ := os.Stat(triggerFile.File)
+		if triggerFile.Timestamp != fileInfo.ModTime().UnixMilli() {
+			shouldReload = true
+			if cli.Config.AutogenLang == "py" {
+				cli = GeneratePythonOperations2(cli)
+			}
+			compiledShell, err := lib.CompileCli(cli)
+			if err != nil {
+				panic(err)
+			}
+			err = os.WriteFile(cli.Config.Outfile, []byte(compiledShell), 0644)
+			if err != nil {
+				panic(err)
+			}
+			break
+		}
+	}
+	return shouldReload
+}
 
 func GeneratePythonOperations(srcFile string, argsVerbatim string, outFile string, extraWatchFiles []string) string {
 	var content []byte
@@ -352,4 +396,73 @@ func unquote(str string) string {
 
 func (args pyArguments) Empty() bool {
 	return len(args.args)+len(args.kwargs) == 0
+}
+
+var bashProcessRef *bashProcess
+
+func callBashClosureFunc(closureFile string, closureName string) string {
+	if bashProcessRef == nil {
+		bashProcessRef = newBashProcess()
+	}
+	return bashProcessRef.runClosure(closureFile, closureName)
+}
+
+type bashProcess struct {
+	mutex   sync.Mutex
+	chanOut chan string
+	stdin   io.WriteCloser
+}
+
+func (b *bashProcess) runClosure(closureFile string, closureName string) string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	_, _ = io.WriteString(b.stdin, fmt.Sprintf("%s:%s\n", closureFile, closureName))
+	return <-b.chanOut
+}
+
+func newBashProcess() *bashProcess {
+	var err error
+	var bashOutBuffer []byte
+	var chanOut = make(chan string)
+
+	shellCode := lib.Dedent(`
+		while IFS=: read -r closure_file closure_name; do
+			source "$closure_file"
+			"$closure_name"
+			printf '\0'
+		done
+	`)
+
+	proc := exec.Command("bash", "-c", shellCode)
+	stdin, err := proc.StdinPipe()
+	check(err)
+	stdout, err := proc.StdoutPipe()
+	check(err)
+	err = proc.Start()
+	check(err)
+
+	go func() {
+		var err error
+		var n int
+		buff := make([]byte, 256)
+		for err == nil {
+			n, err = stdout.Read(buff)
+			for i := 0; i < n; i++ {
+				if buff[i] == '\x00' {
+					out := string(bashOutBuffer)
+					bashOutBuffer = []byte{}
+					chanOut <- out
+				} else {
+					bashOutBuffer = append(bashOutBuffer, buff[i])
+				}
+			}
+		}
+	}()
+
+	bashProc := bashProcess{
+		mutex:   sync.Mutex{},
+		chanOut: chanOut,
+		stdin:   stdin,
+	}
+	return &bashProc
 }

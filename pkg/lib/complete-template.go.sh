@@ -2,7 +2,7 @@
 # last_modified_ms: {{.ModifiedTimeMs}}
 # todo: add version metadata
 # todo: add gotype to the top without effecting it somehow
-{{/*gotype: bctils.templateData*/}}
+{{/*gotype: bctils/pkg/lib.templateData*/}}
 
 log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
 log_everything () { if [[ "{{.Cli.CliNameClean}}" == "$1" ]]; then exec >> ~/bashscript.log; exec 2>&1; set -x; fi; }
@@ -140,25 +140,15 @@ source "{{.}}"
 {{end}}
 {{end}}
 
-{{if .Cli.Config.ReloadTriggerFiles}}
+{{if .Cli.Config.AutogenReloadTriggers}}
 __bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} () {
-  reload_files={{ BashArray .Cli.Config.ReloadTriggerFiles 2 }}
-  reload_files_md5="$(md5sum "${reload_files[@]}")" # todo: use stat modified time
-  cache_file="$HOME/.cache/bctils_autogen_md5_{{.Cli.CliNameClean}}"
-
-  # todo: reload detection with zero forks
-  # mapfile -tn "2" line < "/home/willy/.dotfiles/bashcompletils/compile/examplecli2_complete.sh"; printf '%s\n' "${line[1]### last_modified_ms: }"
-  if [[
-    "$__bctils_autogen_reload_cache_md5_{{.Cli.CliNameClean}}" != "$reload_files_md5" \
-    && "$(cat "$cache_file" 2>/dev/null)" != "$reload_files_md5" \
-  ]]
-  then
-    if {{.Cli.Config.AutoGenArgsVerbatim}}
-    then
-      source "{{.Cli.Config.AutoGenOutfile}}"
-      echo "$reload_files_md5" > "$cache_file"
-      __bctils_autogen_reload_cache_md5_{{.Cli.CliNameClean}}="$reload_files_md5"
-    fi
+  bctils -reload-check <<'OEF'
+    {{ .StringsJoin .Cli.OperationsReloadConfig 4 }}
+OEF
+  local return_code="$?"
+  if [[ "$return_code" == 5 ]]; then
+    # source self to reload changes
+    source "{{.Cli.Config.Outfile}}"
   fi
 
   __bctils_v2_autocomplete_{{.Cli.CliNameClean}}

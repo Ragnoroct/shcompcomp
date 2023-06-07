@@ -31,43 +31,76 @@ type cliFlags struct {
 	autogenExtraWatchFiles arrayFlags
 }
 
-//type mainFlags struct {
-//}
+type Options struct {
+	args        []string
+	checkReload bool
+}
+
+func entry(stdin io.Reader, stdout io.Writer, stderr io.Writer, options Options) (code int) {
+	if options.checkReload {
+		if generators.CheckReload(stdin, stdout, stderr) {
+			return 5
+		} else {
+			return 0
+		}
+	} else {
+		infile := options.args[0]
+		if infile == "-" {
+			content, err := io.ReadAll(stdin)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "%s\n", err)
+				return 1
+			} else if len(content) == 0 {
+				_, _ = fmt.Fprintf(stderr, "stdin is empty\n")
+				return 1
+			}
+
+			cli := lib.ParseOperations(string(content))
+
+			if cli.Config.AutogenLang == "py" {
+				cli = generators.GeneratePythonOperations2(cli)
+			}
+			compiledShell, err := lib.CompileCli(cli)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "%s\n", err)
+				return 1
+			}
+
+			if cli.Config.Outfile == "-" {
+				_, err = fmt.Fprint(stdout, compiledShell)
+				if err != nil {
+					_, _ = fmt.Fprintf(stderr, "%s\n", err)
+					return 1
+				}
+			} else {
+				outfile := cli.Config.Outfile
+				err = os.WriteFile(outfile, []byte(compiledShell), 0664)
+				if err != nil {
+					_, _ = fmt.Fprintf(stderr, "%s\n", err)
+					return 1
+				}
+			}
+			return 0
+		} else {
+			_, _ = fmt.Fprintf(stderr, "must provide - as first argument\n")
+			return 1
+		}
+	}
+}
 
 func main() {
-	var err error
 	logCleanup := setupLogger()
 	defer logCleanup()
 
 	isLegacy := len(os.Args) > 1 && os.Args[1] == "-legacy"
 
 	if !isLegacy {
-		//var flags = mainFlags{}
-
-		//flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
-		//flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
-		//flag.StringVar(&flags.autogenOutfile, "autogen-outfile", "", "outfile location so it can source itself")
-		//flag.Var(&flags.autogenExtraWatchFiles, "autogen-extra-watch", "extra files to trigger reloads")
-
+		options := Options{}
+		flag.BoolVar(&options.checkReload, "reload-check", false, "")
 		flag.Parse()
-		infile := flag.Arg(0)
-		if infile == "-" {
-			content, err := io.ReadAll(os.Stdin)
-			if err != nil {
-				exit(1, err)
-			} else if len(content) == 0 {
-				exit(1, "stdin is empty")
-			}
-			cli := lib.ParseOperations(string(content))
-			compiledShell, err := lib.CompileCli(cli)
-			exitCheck(err, 1, "")
-
-			if cli.Config.Outfile == "-" {
-				_, err = os.Stdout.WriteString(compiledShell)
-				exitCheck(err, 1, "")
-			}
-		}
-		lib.Check(err)
+		options.args = flag.Args()
+		exitCode := entry(os.Stdin, os.Stdout, os.Stderr, options)
+		os.Exit(exitCode)
 	} else {
 		// legacy: allow tests to pass while reworking
 		os.Args = append(os.Args[0:1], os.Args[2:]...)
@@ -104,17 +137,6 @@ func main() {
 
 		_, err = os.Stdout.WriteString(compiledShell)
 		lib.Check(err)
-	}
-}
-
-func exitCheck(err error, code int, msg string) {
-	if err != nil {
-		if msg != "" {
-			_, _ = fmt.Fprintf(os.Stderr, "%s\n", msg)
-		} else {
-			_, _ = fmt.Fprintf(os.Stderr, "%s\n", err)
-		}
-		os.Exit(code)
 	}
 }
 

@@ -129,6 +129,41 @@ logs:
   | sed -u s/WARNING/"$yellow&$reset"/i \
   ;
 
+build-watch:
+    #!/usr/bin/env bash
+    proj_dir="$PWD"
+
+    red="$(tput setaf 1)"
+    green="$(tput setaf 2)"
+    yellow="$(tput setaf 3)"
+    magenta="$(tput setaf 5)"
+    cyan="$(tput setaf 6)"
+    reset="$(printf "%b" "\033[0m")"
+
+    exec 3>&1
+
+    log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
+    inotify_action () {
+      if [[ "$1" =~ ".go"$ && ! "$1" =~ "_test.go"$ && ! "$1" =~ "testutil.go"$ ]]; then
+        profile_start="$EPOCHREALTIME"
+        if ! build_out="$(go build -o "build/bctils" 2>&1 1>&3)"; then
+          log "go compile FAIL:\n$build_out"
+        else
+          log "go compile PASS"
+        fi
+        profile_end="$EPOCHREALTIME"
+        echo "compiled: $(bc <<< "scale=2;(($profile_end-$profile_start)*10000)/10")ms - $1"
+      fi
+    }
+
+    inotify_action "dummy.go"
+    inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
+    --exclude "$proj_dir\/((compile|build|scratch.*|archive|\..*).*|.*(\.lock|~|\.log))$" \
+    | inotifywait_debounce 100 | \
+    while read -r dir events filename; do
+      inotify_action "$dir$filename"
+    done
+
 @build:
   mkdir -p "build"
   go build -o "build/bctils"

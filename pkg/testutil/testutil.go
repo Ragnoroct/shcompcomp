@@ -3,6 +3,7 @@ package testutil
 import (
 	"bctils/pkg/lib"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -26,15 +27,35 @@ type completerProcesses struct {
 
 var processes completerProcesses
 
+func CompleterFile(shellFile string) *CompleterProcess {
+	if processes.processMap == nil {
+		processes.processMap = make(map[string]*CompleterProcess)
+	}
+	processKey := "file:" + shellFile
+	if process, ok := processes.processMap[processKey]; ok {
+		return process
+	} else {
+		chanOut, stdin := startProcess("", shellFile)
+		process = &CompleterProcess{
+			chanOut: chanOut,
+			stdin:   stdin,
+			mutex:   sync.Mutex{},
+		}
+
+		processes.processMap[processKey] = process
+		return process
+	}
+}
+
 func Completer(completeShell string) *CompleterProcess {
 	if processes.processMap == nil {
 		processes.processMap = make(map[string]*CompleterProcess)
 	}
-	completeShell = Dedent(completeShell)
+	completeShell = lib.Dedent(completeShell)
 	if process, ok := processes.processMap[completeShell]; ok {
 		return process
 	} else {
-		chanOut, stdin := startProcess(completeShell)
+		chanOut, stdin := startProcess(completeShell, "")
 		process = &CompleterProcess{
 			chanOut: chanOut,
 			stdin:   stdin,
@@ -57,9 +78,37 @@ func (p *CompleterProcess) Complete(cmdStr string) string {
 
 func ParseOperationsStdinHelper(operations string) string {
 	var stdin bytes.Buffer
-	operations = Dedent(operations)
+	operations = lib.Dedent(operations)
 	stdin.Write([]byte(operations))
 	return lib.ParseOperationsStdin(&stdin)
+}
+
+func ExpectCompleteFile(t *testing.T, shellFile string, cmdStr string, expected string) {
+	t.Helper()
+	completer := CompleterFile(shellFile)
+	actual := strings.TrimRight(completer.Complete(cmdStr), "\n \t")
+	if actual != expected {
+		testname := t.Name()
+		pwd, _ := os.Getwd()
+		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
+		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
+		testname = strings.ToLower(testname)
+		testname += ".bash"
+		compilePath := path.Join(pwd, "compile/"+testname)
+		content, _ := os.ReadFile(shellFile)
+		_ = os.WriteFile(compilePath, content, 0644)
+
+		t.Fatalf(
+			"\n%s\n"+
+				"     cmd: '%s'\n"+
+				"  actual: '%s'\n"+
+				"expected: '%s'\n",
+			"./"+strings.TrimPrefix(compilePath, pwd+"/")+":0:",
+			cmdStr,
+			actual,
+			expected,
+		)
+	}
 }
 
 func ExpectComplete(t *testing.T, shell string, cmdStr string, expected string) {
@@ -133,12 +182,28 @@ func MockOsStdout() (cleanup func(), stdout *StdoutMock) {
 	}, &stdoutMock
 }
 
-func startProcess(shellCode string) (chan string, *io.WriteCloser) {
+// todo: check stderr for errors
+func startProcess(shellCode string, filename string) (chan string, *io.WriteCloser) {
 	var err error
 	var bashOutBuffer []byte
 	var chanOut = make(chan string)
 
-	shellCode = Dedent(shellCode) + "\n" + Dedent(`
+	var shellCodePrefix string
+	if shellCode != "" {
+		// inline completion code
+		shellCodePrefix = lib.Dedent(shellCode)
+	} else {
+		// external completion code (for testing auto reload stuff)
+		shellCodePrefix = lib.Dedent(fmt.Sprintf(`
+			source "%s"
+		`, filename))
+	}
+
+	cwd, _ := os.Getwd()
+	buildPath := path.Join(cwd, "build")
+
+	shellCode = shellCodePrefix + "\n" + lib.Dedent(`
+		export PATH="$PATH:`+buildPath+`"
 		complete_cmd_str() {
 			local input_line="$1"
 			declare -g complete_cmd_str_result
@@ -207,47 +272,6 @@ func startProcess(shellCode string) (chan string, *io.WriteCloser) {
 	}()
 
 	return chanOut, &stdin
-}
-
-func Dedent(str string) string {
-	mixingSpacesAndTabs := false
-	if str[0] == '\n' {
-		str = str[1:]
-	}
-	lines := strings.Split(str, "\n")
-	minIndent := -1
-	for _, line := range lines {
-		for i, c := range line {
-			if c == ' ' {
-				mixingSpacesAndTabs = true
-				//panic("cannot handle mixing spaces with tab")
-				continue
-			} else if c != '\t' {
-				if minIndent == -1 || i < minIndent {
-					minIndent = i
-				}
-				break
-			}
-		}
-	}
-
-	if minIndent == 0 {
-		return strings.TrimSpace(str) + "\n"
-	} else if mixingSpacesAndTabs {
-		panic("cannot handle mixing spaces with tab")
-	}
-
-	indentStr := strings.Repeat("\t", minIndent)
-	for i := range lines {
-		newLine, _ := strings.CutPrefix(lines[i], indentStr)
-		lines[i] = newLine
-	}
-
-	if strings.Trim(lines[len(lines)-1], " \t\n") == "" {
-		lines = lines[0 : len(lines)-1]
-	}
-
-	return strings.Join(lines, "\n") + "\n"
 }
 
 func check(err error) {

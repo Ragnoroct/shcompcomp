@@ -3,6 +3,7 @@ package main
 import (
 	"bctils/pkg/lib"
 	"bctils/pkg/testutil"
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -59,7 +60,7 @@ func TestEndToEndAutoGenWithReload(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	writeFile := func(filename string, value string) {
-		value = testutil.Dedent(value)
+		value = lib.Dedent(value)
 		err := os.WriteFile(path.Join(tmpDir, filename), []byte(value), 0644)
 		lib.Check(err)
 	}
@@ -76,37 +77,41 @@ func TestEndToEndAutoGenWithReload(t *testing.T) {
 		}
 	`, path.Join(tmpDir, "cmd.py")))
 
+	completeFile := path.Join(tmpDir, "cmd.bash")
 	mainWithStdout(
-		[]string{"bctils", "-"},
+		[]string{"-"},
 		fmt.Sprintf(
 			`
+			cfg cli_name=bobman
 			cfg autogen_lang=py
 			cfg autogen_closure_func=cmd_autogen_piper
 			cfg autogen_closure_source=%s
 			cfg autogen_reload_trigger=%s
 			cfg outfile=%s
-			opt "-h"
-			opt "--help"
 			`,
-			path.Join(tmpDir, "cmd.bash"),
-			path.Join(tmpDir, "cmd.py"),
 			path.Join(tmpDir, "cmdlib.sh"),
+			path.Join(tmpDir, "cmd.py"),
+			completeFile,
 		),
 	)
+
+	// todo: test that it only reloads when changes are made to trigger files
+	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome")
+
+	writeFile("cmd.py", `
+		from argparse import ArgumentParser
+		parser = ArgumentParser()
+		parser.add_argument("--awesome-times-infinity")
+	`)
+
+	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome-times-infinity")
 }
 
 func mainWithStdout(args []string, stdin string) (stdout string) {
-	oldArgs := os.Args
-	cleanupArgs := func() {
-		os.Args = oldArgs
-	}
-	os.Args = args
-	cleanupStdin := testutil.MockOsStdin(stdin)
-	cleanupStdout, stdoutMock := testutil.MockOsStdout()
-	defer cleanupStdout()
-	defer cleanupStdin()
-	defer cleanupArgs()
-	os.Args = []string{"bctils", "-"}
-	main()
-	return stdoutMock.GetString()
+	var stdoutWriter bytes.Buffer
+	var stderrWriter bytes.Buffer
+	var stdinReader bytes.Buffer
+	stdinReader.WriteString(stdin)
+	entry(&stdinReader, &stdoutWriter, &stderrWriter, Options{checkReload: false, args: args})
+	return stdoutWriter.String()
 }
