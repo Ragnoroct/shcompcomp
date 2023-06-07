@@ -4,7 +4,6 @@ import (
 	"bctils/pkg/generators"
 	"bctils/pkg/lib"
 	"bufio"
-	_ "embed"
 	"flag"
 	"fmt"
 	"io"
@@ -32,14 +31,42 @@ type cliFlags struct {
 	autogenExtraWatchFiles arrayFlags
 }
 
+//type mainFlags struct {
+//}
+
 func main() {
 	var err error
 	logCleanup := setupLogger()
 	defer logCleanup()
 
-	if len(os.Args) < 2 || os.Args[1] != "-legacy" {
-		// new
-		_, err = io.ReadAll(os.Stdin)
+	isLegacy := len(os.Args) > 1 && os.Args[1] == "-legacy"
+
+	if !isLegacy {
+		//var flags = mainFlags{}
+
+		//flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
+		//flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
+		//flag.StringVar(&flags.autogenOutfile, "autogen-outfile", "", "outfile location so it can source itself")
+		//flag.Var(&flags.autogenExtraWatchFiles, "autogen-extra-watch", "extra files to trigger reloads")
+
+		flag.Parse()
+		infile := flag.Arg(0)
+		if infile == "-" {
+			content, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				exit(1, err)
+			} else if len(content) == 0 {
+				exit(1, "stdin is empty")
+			}
+			cli := lib.ParseOperations(string(content))
+			compiledShell, err := lib.CompileCli(cli)
+			exitCheck(err, 1, "")
+
+			if cli.Config.Outfile == "-" {
+				_, err = os.Stdout.WriteString(compiledShell)
+				exitCheck(err, 1, "")
+			}
+		}
 		lib.Check(err)
 	} else {
 		// legacy: allow tests to pass while reworking
@@ -77,6 +104,17 @@ func main() {
 
 		_, err = os.Stdout.WriteString(compiledShell)
 		lib.Check(err)
+	}
+}
+
+func exitCheck(err error, code int, msg string) {
+	if err != nil {
+		if msg != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "%s\n", msg)
+		} else {
+			_, _ = fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
+		os.Exit(code)
 	}
 }
 

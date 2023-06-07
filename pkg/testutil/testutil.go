@@ -30,7 +30,7 @@ func Completer(completeShell string) *CompleterProcess {
 	if processes.processMap == nil {
 		processes.processMap = make(map[string]*CompleterProcess)
 	}
-	completeShell = dedent(completeShell)
+	completeShell = Dedent(completeShell)
 	if process, ok := processes.processMap[completeShell]; ok {
 		return process
 	} else {
@@ -57,7 +57,7 @@ func (p *CompleterProcess) Complete(cmdStr string) string {
 
 func ParseOperationsStdinHelper(operations string) string {
 	var stdin bytes.Buffer
-	operations = dedent(operations)
+	operations = Dedent(operations)
 	stdin.Write([]byte(operations))
 	return lib.ParseOperationsStdin(&stdin)
 }
@@ -89,12 +89,56 @@ func ExpectComplete(t *testing.T, shell string, cmdStr string, expected string) 
 	}
 }
 
+func MockOsStdin(content string) (cleanup func()) {
+	oldOsStdin := os.Stdin
+
+	tmpfile, _ := os.CreateTemp(os.TempDir(), "bctils-tests")
+	contentBytes := []byte(content)
+
+	_, _ = tmpfile.Write(contentBytes)
+	_, _ = tmpfile.Seek(0, 0)
+	os.Stdin = tmpfile
+	return func() {
+		os.Stdin = oldOsStdin
+		err := os.Remove(tmpfile.Name())
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+type StdoutMock struct {
+	pipeWriter *os.File
+	pipeReader *os.File
+}
+
+func (stdout StdoutMock) GetString() string {
+	_ = stdout.pipeWriter.Close()
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, stdout.pipeReader)
+	_ = stdout.pipeReader.Close()
+	return buf.String()
+}
+
+func MockOsStdout() (cleanup func(), stdout *StdoutMock) {
+	oldOsStdout := os.Stdout
+	reader, writer, _ := os.Pipe()
+	stdoutMock := StdoutMock{
+		pipeWriter: writer,
+		pipeReader: reader,
+	}
+	os.Stdout = stdoutMock.pipeWriter
+	return func() {
+		os.Stdout = oldOsStdout
+	}, &stdoutMock
+}
+
 func startProcess(shellCode string) (chan string, *io.WriteCloser) {
 	var err error
 	var bashOutBuffer []byte
 	var chanOut = make(chan string)
 
-	shellCode = dedent(shellCode) + "\n" + dedent(`
+	shellCode = Dedent(shellCode) + "\n" + Dedent(`
 		complete_cmd_str() {
 			local input_line="$1"
 			declare -g complete_cmd_str_result
@@ -165,7 +209,7 @@ func startProcess(shellCode string) (chan string, *io.WriteCloser) {
 	return chanOut, &stdin
 }
 
-func dedent(str string) string {
+func Dedent(str string) string {
 	mixingSpacesAndTabs := false
 	if str[0] == '\n' {
 		str = str[1:]

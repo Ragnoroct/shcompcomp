@@ -594,7 +594,7 @@ else
   }
 
   __bctils_test_run_test_script() {
-    if go test -v "./generators"
+    if go test -v "./pkg/generators"
     then
       BCTILS_COMPILE_TIME="$BCTILS_COMPILE_TIME" \
       TEST_RUN_MODE="RUN_TESTS_ONCE" \

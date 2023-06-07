@@ -49,6 +49,8 @@ func (ctx TestContext) Run(name string, testFunc func(ctx TestContext)) {
 	onAfter(ctx.t, passed)
 }
 
+//func (ctx TestContext) CaptureStdout()
+
 func dedent(str string) string {
 	mixingSpacesAndTabs := false
 	if str[0] == '\n' {
