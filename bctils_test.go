@@ -54,6 +54,7 @@ func TestMainCalls(t *testing.T) {
 			ctx.t.Fatalf("stdout from calling main produced no output")
 		}
 	})
+	ctx.Run("sort results by pos -> --help option", nil)
 }
 
 func TestEndToEndAutoGenWithReload(t *testing.T) {
