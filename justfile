@@ -79,34 +79,6 @@ test2 test_name="":
     run_tests
   done
 
-pumpitcli:
-  #!/usr/bin/env bash
-  inotifywait_action () {
-    local file="$1"
-    if [[ "$file" =~ ".go"$ ]]; then
-      just build
-    fi
-    shell_lines=(
-      'echo "> sourcing bctils-lib.sh"'
-      'source "$HOME/.dotfiles/bashcompletils/bctils-lib.sh"'
-      'echo "> bctils_autogen"'
-      'bctils_autogen "$HOME/repos/pumpit-dev-tools/pumpitcli" --lang=py --source'
-    )
-    cmd_args=(
-      bash -c "$(printf "%s\n" "${shell_lines[@]}")"
-    )
-    "${cmd_args[@]}"
-  }
-
-  just build
-  inotifywait_action
-  inotifywait -q -m -r -e close_write,create,delete "$PWD" \
-  --exclude ".*((compile|build|scratch.*|archive|\..*).*|.*(\.lock|~|\.log))$" | \
-  inotifywait_debounce 100 | \
-  while read -r dir events dir_file; do
-    inotifywait_action "$dir/$dir_file"
-  done
-
 logs:
   #!/usr/bin/env bash
   log_file="$HOME/bashscript.log"

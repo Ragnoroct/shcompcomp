@@ -1,6 +1,7 @@
 package generators
 
 import (
+	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
 	"strings"
@@ -123,6 +124,35 @@ func TestAutoGen(t *testing.T) {
 		)
 	})
 
+	// todo: figure out how to do my before/after with IDE integration
+	t.Run("triple layer subparser", func(t *testing.T) {
+		expectOperations(
+			t,
+			`
+			from argparse import ArgumentParser
+			parser_a = ArgumentParser()
+			parser_a.add_argument("--help-a")
+			subparsers_a = parser_a.add_subparsers()
+
+			parser_b = subparsers_a.add_parser("parser-b")
+			parser_b.add_argument("--help-b")
+			subparsers_b = parser_b.add_subparsers()
+
+			parser_c = subparsers_b.add_parser("parser-c")
+			parser_c.add_argument("--help-c")
+
+			parser.parse_args()
+			`,
+			`
+			pos --choices="parser-b"
+			opt "--help-a"
+			pos -p="parser-b" --choices="parser-c"
+			opt -p="parser-b" "--help-b"
+			opt -p="parser-b.parser-c" "--help-c"
+			`,
+		)
+	})
+
 	runSubtest(t, "order of operations is always the same", nil)
 
 	runSubtest(t, "options with values", nil)
@@ -134,7 +164,7 @@ func TestAutoGen(t *testing.T) {
 func expectOperations(t *testing.T, src string, expected string) {
 	actual := strings.TrimSpace(strings.Join(parseSrc(dedent(src)), "\n")) + "\n"
 	expected = strings.TrimSpace(dedent(expected)) + "\n"
-	expectEqual(t, expected, actual, "")
+	assert.Equal(t, expected, actual)
 }
 
 func runSubtest(t *testing.T, name string, testMethod func(t *testing.T)) {
@@ -158,19 +188,6 @@ func runSubtest(t *testing.T, name string, testMethod func(t *testing.T)) {
 		testMethod(t)
 	})
 	onAfter(t, passed)
-}
-
-func expectEqual(t *testing.T, expected string, actual string, msg string) {
-	if msg == "" {
-		msg = "strings are not equal"
-	}
-	if actual != expected {
-		t.Fatalf(
-			"%s\nactual:\n'''\n%s'''\nexpected:\n'''\n%s'''", msg,
-			actual,
-			expected,
-		)
-	}
 }
 
 func dedent(str string) string {

@@ -24,6 +24,9 @@ func GeneratePythonOperations2(cli lib.Cli) lib.Cli {
 	if cli.Config.AutogenClosureFunc != "" {
 		src := callBashClosureFunc(cli.Config.AutogenClosureSource, cli.Config.AutogenClosureFunc)
 		operations = append(operations, parseSrc(src)...)
+	} else if cli.Config.AutogenClosureCmd != "" {
+		src := runCmd(cli.Config.AutogenClosureCmd)
+		operations = append(operations, parseSrc(src)...)
 	}
 
 	cli = lib.ParseOperations(strings.Join(operations, "\n"))
@@ -108,6 +111,7 @@ type pyAddArgumentCall struct {
 type pyParser struct {
 	parserIdentifier    pyIdentifier
 	parserName          string
+	parserParent        *pyParser
 	subParsersIdentifer pyIdentifier
 	subParserList       []*pyParser
 	addArgumentCalls    []pyAddArgumentCall
@@ -190,6 +194,7 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 					newParser := pyParser{
 						parserIdentifier: parserIdentifier,
 						parserName:       parserName,
+						parserParent:     parentParser,
 						subParserList:    []*pyParser{},
 						addArgumentCalls: []pyAddArgumentCall{},
 					}
@@ -227,6 +232,17 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 		if len(subparserNames) > 0 {
 			var operation []string
 			operation = append(operation, "pos")
+			if parser.parserName != "" {
+				parsersString := parser.parserName
+				for {
+					parentParser := parser.parserParent
+					if parentParser == nil || parentParser.parserName == "" {
+						break
+					}
+					parsersString = parentParser.parserName + "." + parsersString
+				}
+				operation = append(operation, fmt.Sprintf(`-p="%s"`, parsersString))
+			}
 			operation = append(operation, fmt.Sprintf(`--choices="%s"`, strings.Join(subparserNames, " ")))
 			operations = append(operations, strings.Join(operation, " "))
 		}
@@ -254,7 +270,17 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 			}
 
 			if parser.parserName != "" {
-				operation = append(operation, fmt.Sprintf(`-p="%s"`, parser.parserName))
+				parsersString := parser.parserName
+				currentParserIter := parser
+				for {
+					parentParser := currentParserIter.parserParent
+					if parentParser == nil || parentParser.parserName == "" {
+						break
+					}
+					parsersString = parentParser.parserName + "." + parsersString
+					currentParserIter = parentParser
+				}
+				operation = append(operation, fmt.Sprintf(`-p="%s"`, parsersString))
 			}
 
 			if strings.HasPrefix(argumentName, "-") {
@@ -418,6 +444,14 @@ func (b *bashProcess) runClosure(closureFile string, closureName string) string 
 	defer b.mutex.Unlock()
 	_, _ = io.WriteString(b.stdin, fmt.Sprintf("%s:%s\n", closureFile, closureName))
 	return <-b.chanOut
+}
+
+func runCmd(cmd string) string {
+	out, err := exec.Command(cmd).Output()
+	if err != nil {
+		panic(err)
+	}
+	return string(out)
 }
 
 func newBashProcess() *bashProcess {

@@ -145,6 +145,7 @@ func (r ReloadTrigger) String() string {
 type CliConfig struct {
 	Outfile               string
 	AutogenLang           string
+	AutogenClosureCmd     string
 	AutogenClosureFunc    string
 	AutogenClosureSource  string
 	AutogenReloadTriggers []ReloadTrigger
@@ -287,6 +288,8 @@ func ParseOperations(operationsStr string) Cli {
 				cli.Config.Outfile = configValue
 			case "autogen_lang":
 				cli.Config.AutogenLang = configValue
+			case "autogen_closure_cmd":
+				cli.Config.AutogenClosureCmd = configValue
 			case "autogen_closure_func":
 				cli.Config.AutogenClosureFunc = configValue
 			case "autogen_closure_source":
