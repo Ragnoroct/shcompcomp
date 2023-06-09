@@ -7,10 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"path"
-	"time"
 )
 
 type arrayFlags []string
@@ -89,7 +86,7 @@ func entry(stdin io.Reader, stdout io.Writer, stderr io.Writer, options Options)
 }
 
 func main() {
-	logCleanup := setupLogger()
+	logCleanup := lib.SetupLogger()
 	defer logCleanup()
 
 	isLegacy := len(os.Args) > 1 && os.Args[1] == "-legacy"
@@ -143,17 +140,4 @@ func main() {
 func exit(code int, msg any) {
 	_, _ = fmt.Fprintln(os.Stderr, msg)
 	os.Exit(code)
-}
-
-func setupLogger() func() {
-	home, _ := os.UserHomeDir()
-	f, err := os.OpenFile(path.Join(home, "bashscript.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
-	lib.Check(err)
-	log.SetOutput(f)
-	log.SetFlags(0)
-	log.SetPrefix(time.Now().Local().Format("[15:04:05.000]") + " [bctils] ")
-
-	return func() {
-		lib.Check(f.Close())
-	}
 }

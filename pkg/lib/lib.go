@@ -4,8 +4,11 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"io"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,12 +22,13 @@ var completeTemplate string
 const (
 	CompleteTypeClosure = "closure"
 	CompleteTypeChoices = "choices"
-	DefaultParser       = "base"
+	DefaultParser       = "__base_parser__"
 )
 
 type CliParserName string
 type CliParser struct {
 	parserName  CliParserName
+	subparsers  map[CliParserName]bool
 	positionals []CliPositional
 	optionals   []CliOptional
 }
@@ -41,32 +45,52 @@ func (parsers *CliParsers) addPositional(pos CliPositional) {
 		parser.positionals = append(parser.positionals, pos)
 		parsers.parserMap[name] = parser
 	} else {
-		parser = CliParser{
-			parserName:  name,
-			positionals: []CliPositional{},
-			optionals:   []CliOptional{},
-		}
+		parser = parsers.parser(name)
 		pos.Number = len(parser.positionals) + 1
 		parser.positionals = append(parser.positionals, pos)
 		parsers.parserMap[name] = parser
 		parsers.parserSeq = append(parsers.parserSeq, name)
 	}
+	parsers.addSubparserChoice(name)
 }
 
 func (parsers *CliParsers) addOptional(opt CliOptional) {
 	name := opt.parser
 	if parser, ok := parsers.parserMap[name]; ok {
+		// existing parser
 		parser.optionals = append(parser.optionals, opt)
 		parsers.parserMap[name] = parser
 	} else {
-		parser = CliParser{
-			parserName:  name,
-			positionals: []CliPositional{},
-			optionals:   []CliOptional{},
-		}
+		// new parser
+		parser = parsers.parser(name)
 		parser.optionals = append(parser.optionals, opt)
 		parsers.parserMap[name] = parser
-		parsers.parserSeq = append(parsers.parserSeq, name)
+	}
+	parsers.addSubparserChoice(name)
+}
+
+func (parsers *CliParsers) addSubparserChoice(parserFQN CliParserName) {
+	if parserFQN == DefaultParser {
+		return
+	}
+
+	// add subparser to parent parser
+	split := strings.Split(string(parserFQN), ".")
+	if len(split) > 0 {
+		parserName := CliParserName(split[len(split)-1])
+		parserParentName := CliParserName(strings.Join(split[0:len(split)-1], "."))
+		if parserParentName == "" {
+			parserParentName = DefaultParser
+		}
+		if parserName != "" {
+			if parserParent, ok := parsers.parserMap[parserParentName]; ok {
+				if parserParent.subparsers == nil {
+					parserParent.subparsers = map[CliParserName]bool{}
+				}
+				parserParent.subparsers[parserName] = true
+				parsers.parserMap[parserParentName] = parserParent
+			}
+		}
 	}
 }
 
@@ -117,6 +141,14 @@ func (parser CliParser) OptionalsData() map[string]string {
 	return assoc
 }
 
+func (parser CliParser) Subparsers() []string {
+	var names []string
+	for subparserName, _ := range parser.subparsers {
+		names = append(names, string(subparserName))
+	}
+	return names
+}
+
 type CliPositional struct {
 	parser       CliParserName
 	Number       int
@@ -127,6 +159,7 @@ type CliPositional struct {
 
 type CliOptional struct {
 	parser       CliParserName
+	parserParent CliParser
 	name         string
 	completeType string
 	closureName  string
@@ -149,10 +182,6 @@ type CliConfig struct {
 	AutogenClosureFunc    string
 	AutogenClosureSource  string
 	AutogenReloadTriggers []ReloadTrigger
-	SourceIncludes        []string // deprecated
-	ReloadTriggerFiles    []string // deprecated
-	AutoGenArgsVerbatim   string   // deprecated
-	AutoGenOutfile        string   // deprecated
 }
 
 func (c Cli) CliName() string {
@@ -201,8 +230,9 @@ type OptionList struct {
 }
 
 type templateData struct {
-	ModifiedTimeMs int64
-	Cli            Cli
+	ModifiedTimeMs     int64
+	Cli                Cli
+	DefaultParserClean string
 }
 
 func (d templateData) ParserNameMap() map[string]string {
@@ -238,7 +268,8 @@ func ParseOperationsStdin(stdin io.Reader) string {
 	content, err := io.ReadAll(stdin)
 	Check(err)
 	cli := ParseOperations(string(content))
-	completeCode, _ := CompileCli(cli)
+	completeCode, err := CompileCli(cli)
+	Check(err)
 	return completeCode
 }
 
@@ -251,6 +282,8 @@ func ParseOperations(operationsStr string) Cli {
 	cli := Cli{
 		Config: CliConfig{Outfile: "-"},
 	}
+	parsers.parser(DefaultParser)
+
 	var operationLinesParsed []string
 	operationLines := strings.Split(operationsStr, "\n")
 	for opIndex, opStr := range operationLines {
@@ -259,7 +292,7 @@ func ParseOperations(operationsStr string) Cli {
 			continue
 		}
 
-		words := splitOperation(opStr)
+		words := parseWords(opStr)
 		opType := words[0]
 		var intOperations []string
 
@@ -274,15 +307,6 @@ func ParseOperations(operationsStr string) Cli {
 			configName = unquote(configName)
 			configValue = unquote(configValue)
 			switch configName {
-			case "INCLUDE_SOURCE":
-				cli.Config.SourceIncludes = append(cli.Config.SourceIncludes, configValue)
-			case "RELOAD_FILE_TRIGGER":
-				cli.Config.ReloadTriggerFiles = append(cli.Config.ReloadTriggerFiles, configValue)
-			case "AUTOGEN_OUTFILE":
-				cli.Config.AutoGenOutfile = configValue
-			case "AUTOGEN_ARGS_VERBATIM":
-				configValue = strings.Replace(configValue, "--source", "", 1)
-				cli.Config.AutoGenArgsVerbatim = configValue
 			case "cli_name":
 				cli.cliName = configValue
 			case "outfile":
@@ -387,8 +411,9 @@ func ParseOperations(operationsStr string) Cli {
 
 func CompileCli(cli Cli) (string, error) {
 	data := templateData{
-		ModifiedTimeMs: time.Now().UnixMilli(),
-		Cli:            cli,
+		ModifiedTimeMs:     time.Now().UnixMilli(),
+		Cli:                cli,
+		DefaultParserClean: cleanShellIdentifier(DefaultParser),
 	}
 
 	// new template feature '\}}' chomps next newline rather than trim all whitespace '-}}'
@@ -423,7 +448,7 @@ func CompileCli(cli Cli) (string, error) {
 		matches := re.FindStringSubmatch(err.Error())
 		col, _ := strconv.Atoi(matches[2])
 		return "", fmt.Errorf(
-			"error in template ./complete-template.go.sh:%s:%d: \n%s",
+			"error in template ./pkg/lib/complete-template.go.sh:%s:%d: \n%s",
 			matches[1],
 			col+1,
 			err,
@@ -453,17 +478,6 @@ func tryOption(word string, name string) (string, bool) {
 
 func cleanShellIdentifier(identifier string) string {
 	return regexp.MustCompile(`[^a-zA-Z0-9 ]+`).ReplaceAllString(identifier, "")
-}
-
-// https://stackoverflow.com/a/47489825
-func splitOperation(op string) []string {
-	quoted := false
-	return strings.FieldsFunc(op, func(r rune) bool {
-		if r == '"' {
-			quoted = !quoted
-		}
-		return !quoted && r == ' '
-	})
 }
 
 func Check(e error) {
@@ -630,4 +644,72 @@ func Dedent(str string) string {
 	}
 
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func parseWords(line string) []string {
+	var escapeNext = false
+	var quoted = false
+	var closeQuote rune
+	var words []string
+	var word string
+	for _, r := range line {
+		if !escapeNext {
+			if quoted && r == closeQuote {
+				quoted = false
+				continue
+			} else if !quoted && (r == '"' || r == '\'') {
+				closeQuote = r
+				quoted = true
+				continue
+			}
+		}
+
+		if r == '\\' && !(quoted && closeQuote == '\'') && !escapeNext {
+			escapeNext = true
+			continue
+		}
+
+		if (r == ' ' || r == '\t') && !escapeNext && !quoted {
+			if word != "" {
+				words = append(words, word)
+			}
+			word = ""
+		} else {
+			word += string(r)
+			escapeNext = false
+		}
+	}
+
+	if word != "" {
+		words = append(words, word)
+	}
+
+	return words
+}
+
+func SetupLogger() func() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+	logFile, err := os.OpenFile(path.Join(home, "bashscript.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
+	if err != nil {
+		panic(err)
+	}
+
+	// https://github.com/rs/zerolog/tree/master#pretty-logging
+	output := zerolog.ConsoleWriter{Out: logFile, TimeFormat: "[15:04:05.000]"}
+	output.FormatFieldName = func(i interface{}) string {
+		return fmt.Sprintf("%s:", i)
+	}
+	output.FormatFieldValue = func(i interface{}) string {
+		return strings.ToUpper(fmt.Sprintf("%s", i))
+	}
+
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	log.Logger = log.Output(output)
+
+	return func() {
+		Check(logFile.Close())
+	}
 }

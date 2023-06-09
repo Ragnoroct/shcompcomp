@@ -7,9 +7,9 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/suite"
 	"io"
-	"log"
 	"os"
 	"path"
 	"testing"
@@ -27,7 +27,7 @@ type MainTestSuite struct {
 }
 
 func (suite *MainTestSuite) SetupSuite() {
-	loggerCleanup = setupLogger()
+	loggerCleanup = lib.SetupLogger()
 	log.Printf("RUNNING TESTS")
 }
 
@@ -43,7 +43,7 @@ func (suite *MainTestSuite) TearDownSuite() {
 	defer loggerCleanup()
 }
 
-func (suite *MainTestSuite) AssertComplete(shell, cmdStr string, expected string) {
+func (suite *MainTestSuite) RequireComplete(shell, cmdStr string, expected string) {
 	suite.T().Helper()
 	testutil.ExpectComplete(suite.T(), shell, cmdStr, expected)
 }
@@ -70,9 +70,9 @@ func (suite *MainTestSuite) TestCases() {
 			opt "-h"
 			opt "--help"
 		`)
-		suite.AssertComplete(shell, "bobman ", "-h --help")
-		suite.AssertComplete(shell, "bobman --he", "--help")
-		suite.AssertComplete(shell, "bobman -h", "")
+		suite.RequireComplete(shell, "bobman ", "-h --help")
+		suite.RequireComplete(shell, "bobman --he", "--help")
+		suite.RequireComplete(shell, "bobman -h", "")
 	})
 
 	suite.Run("positionals with choices", func() {
@@ -81,11 +81,11 @@ func (suite *MainTestSuite) TestCases() {
 			pos --choices="c1 c2 c3"
 			pos --choices="c4 c5 c6"
 		`)
-		suite.AssertComplete(shell, "testcli ", "c1 c2 c3")
-		suite.AssertComplete(shell, "testcli c", "c1 c2 c3")
-		suite.AssertComplete(shell, "testcli d", "")
-		suite.AssertComplete(shell, "testcli c2 ", "c4 c5 c6")
-		suite.AssertComplete(shell, "testcli c2 d", "")
+		suite.RequireComplete(shell, "testcli ", "c1 c2 c3")
+		suite.RequireComplete(shell, "testcli c", "c1 c2 c3")
+		suite.RequireComplete(shell, "testcli d", "")
+		suite.RequireComplete(shell, "testcli c2 ", "c4 c5 c6")
+		suite.RequireComplete(shell, "testcli c2 d", "")
 	})
 
 	suite.Run("positionals with choices and optionals", func() {
@@ -95,12 +95,12 @@ func (suite *MainTestSuite) TestCases() {
 			opt "-h"
 			opt "--help"
 		`)
-		suite.AssertComplete(shell, "testcli ", "c1 c2 c3 -h --help")
-		suite.AssertComplete(shell, "testcli c", "c1 c2 c3")
-		suite.AssertComplete(shell, "testcli -", "-h --help")
-		suite.AssertComplete(shell, "testcli c3 ", "-h --help")
-		suite.AssertComplete(shell, "testcli --help ", "c1 c2 c3 -h")
-		suite.AssertComplete(shell, "testcli -h ", "c1 c2 c3 --help")
+		suite.RequireComplete(shell, "testcli ", "c1 c2 c3 -h --help")
+		suite.RequireComplete(shell, "testcli c", "c1 c2 c3")
+		suite.RequireComplete(shell, "testcli -", "-h --help")
+		suite.RequireComplete(shell, "testcli c3 ", "-h --help")
+		suite.RequireComplete(shell, "testcli --help ", "c1 c2 c3 -h")
+		suite.RequireComplete(shell, "testcli -h ", "c1 c2 c3 --help")
 	})
 
 	suite.Run("simple subparsers", func() {
@@ -108,43 +108,43 @@ func (suite *MainTestSuite) TestCases() {
 			cfg cli_name=testcli
 			opt "-h"
 			opt "--help"
-			pos --parsers="sub-cmd"
 			pos -p="sub-cmd" --choices="c1 c2 c3"
 			opt -p="sub-cmd" "--awesome"
 			opt -p="sub-cmd" "--print"
 		`)
-		suite.AssertComplete(shell, "testcli ", "-h --help")
-		suite.AssertComplete(shell, "testcli sub-cmd ", "c1 c2 c3 --awesome --print")
+		suite.RequireComplete(shell, "testcli ", "sub-cmd -h --help")
+		suite.RequireComplete(shell, "testcli sub-cmd ", "c1 c2 c3 --awesome --print")
 	})
 
 	suite.Run("nested subparsers", func() {
 		shell := testutil.ParseOperationsStdinHelper(`
 			cfg cli_name=testcli
-			pos -p="sub-b" 				--help-b
-			pos -p="sub-b.sub-c" 		--help-c
-			pos -p="sub-b.sub-c.sub-d" 	--help-d
+			opt -p="sub-b" 				--help-b
+			opt -p="sub-b.sub-c" 		--help-c
+			opt -p="sub-b.sub-c.sub-d" 	--help-d
 		`)
-		suite.AssertComplete(shell, "testcli ", "sub-b")
-		suite.AssertComplete(shell, "testcli sub-b ", "sub-c --help-b")
-		suite.AssertComplete(shell, "testcli sub-b sub-c ", "sub-d --help-c")
-		suite.AssertComplete(shell, "testcli sub-b sub-c sub-d ", "--help-d")
+		suite.RequireComplete(shell, "testcli ", "sub-b")
+		suite.RequireComplete(shell, "testcli sub-b ", "sub-c --help-b")
+		suite.RequireComplete(shell, "testcli sub-b sub-c ", "sub-d --help-c")
+		suite.RequireComplete(shell, "testcli sub-b sub-c sub-d ", "--help-d")
+	})
+
+	suite.Run("allow closure for positionals", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --closure="__testcli_pos_1_completer"
+			opt --awesome
+			opt --print
+		`)
+		shell += lib.Dedent(`
+			__testcli_pos_1_completer() {
+				mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
+			}
+		`)
+		suite.RequireComplete(shell, "testcli ", "c8 c9 c10 --awesome --print")
 	})
 
 	suite.Run("subparsers cmds are always the first positional and cannot clash", func() {})
-	suite.Run("allow closure for positionals", func() {
-		suite.CreateFile("closure.sh", `
-			  __testcli_pos_1_completer() {
-				mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
-				log "called"
-			  }
-		`)
-		shell := testutil.ParseOperationsStdinHelper(`
-			cfg cli_name=testcli
-			pos --closure="__examplecli5_pos_1_completer"
-		`)
-		suite.AssertComplete(shell, "testcli ", "")
-		suite.AssertComplete(shell, "testcli sub-cmd ", "c1 c2 c3 --awesome --print")
-	})
 	suite.Run("error handling", func() {})
 	suite.Run("compile to target file", func() {})
 	suite.Run("sort results by pos -> --help option", func() {})
@@ -208,7 +208,7 @@ func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
 		hasher := md5.New()
 		f, err := os.Open(filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Msg(err.Error())
 		}
 		defer func(f *os.File) {
 			err := f.Close()
@@ -217,7 +217,7 @@ func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
 			}
 		}(f)
 		if _, err := io.Copy(hasher, f); err != nil {
-			log.Fatal(err)
+			log.Fatal().Msg(err.Error())
 		}
 		return hex.EncodeToString(hasher.Sum(nil))
 	}

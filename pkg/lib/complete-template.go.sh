@@ -20,6 +20,11 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
 
   # arguments
   {{range $parser := .Parsers -}}
+  {{- if $parser.Subparsers }}
+  {{/* subparsers are always the first and only positional */}}
+  local _positional_{{$parser.NameClean}}_1_type="choices"
+  local _positional_{{$parser.NameClean}}_1_choices={{- BashArray $parser.Subparsers 2 }}
+  {{- else }}
   {{- range $pos := $parser.Positionals -}}
   {{- if eq $pos.CompleteType "choices" }}
   local _positional_{{$parser.NameClean}}_{{$pos.Number}}_type="choices"
@@ -27,8 +32,9 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
   {{- else if eq $pos.CompleteType "closure" }}
   local _positional_{{$parser.NameClean}}_{{$pos.Number}}_type="closure"
   local _positional_{{$parser.NameClean}}_{{$pos.Number}}_closure="{{ $pos.ClosureName }}"
-  {{- end}}
-  {{ end }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
   {{- end }}
 
   # todo: _get_comp_words_by_ref remove dependency on bash-completion repo
@@ -47,11 +53,11 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
   local completing_option_val=0
   while true; do
     i=$((i+1))
-    if [[ -z "${words[$i]}" ]]; then break; fi
+    if [[ -z "${words[$i]+set}" ]]; then break; fi
     word="${words[$i]}"
 
     # argument
-    if [[ ! "$word" =~ ^'-' && "$i" -lt "$cword_index" ]]; then
+    if [[ ! "$word" =~ ^'-' && "$i" -le "$cword_index" ]]; then
       carg_index=$((carg_index+1))
     fi
 
@@ -66,17 +72,21 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
     # todo: need a way to ensure subparser match isn't an arg or option value
     # todo: optimize based on "subparsers are invoked based on the value of the first positional argument..."
     if [[ "$i" -le "$cword_index" ]]; then
-      subparser_candidate="${current_parser}${word}"
-      if [[ -n "${subparsers[$subparser_candidate]}" ]]; then
+      if [[ -n "${current_parser}" ]]; then
+        subparser_candidate="${current_parser},${word}"
+      else
+        subparser_candidate="${word}"
+      fi
+      if [[ -n "$subparser_candidate" && -n "${subparsers[$subparser_candidate]}" ]]; then
         current_parser="$subparser_candidate"
         current_parser_clean="${subparsers[$subparser_candidate]}"
-        carg_index=1 # reset todo: why 1 intead of 0
+        carg_index=0 # reset
       fi
     fi
   done
 
   if [[ -z "$current_parser" ]]; then
-    parser="base"
+    parser="{{.DefaultParserClean}}"
   else
     parser="$current_parser_clean"
   fi
@@ -134,11 +144,11 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
   fi
 }
 
-{{if .Cli.Config.SourceIncludes}}
-{{range .Cli.Config.SourceIncludes -}}
-source "{{.}}"
-{{end}}
-{{end}}
+{{/*{{if .Cli.Config.SourceIncludes}}*/}}
+{{/*{{range .Cli.Config.SourceIncludes -}}*/}}
+{{/*source "{{.}}"*/}}
+{{/*{{end}}*/}}
+{{/*{{end}}*/}}
 
 {{if .Cli.Config.AutogenReloadTriggers}}
 __bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} () {
@@ -147,8 +157,7 @@ __bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} () {
 OEF
   local return_code="$?"
   if [[ "$return_code" == 5 ]]; then
-    # source self to reload changes
-    source "{{.Cli.Config.Outfile}}"
+    source "{{.Cli.Config.Outfile}}" # source self to reload changes
   fi
 
   __bctils_v2_autocomplete_{{.Cli.CliNameClean}}

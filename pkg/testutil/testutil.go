@@ -4,7 +4,7 @@ import (
 	"bctils/pkg/lib"
 	"bytes"
 	"fmt"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io"
 	"os"
 	"os/exec"
@@ -112,7 +112,7 @@ func ExpectCompleteFile(t *testing.T, shellFile string, cmdStr string, expected 
 	}
 }
 
-func ExpectComplete(t assert.TestingT, shell string, cmdStr string, expected string) {
+func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected string) {
 	completer := Completer(shell)
 	actual := strings.TrimRight(completer.Complete(cmdStr), "\n \t")
 	if actual != expected {
@@ -134,7 +134,7 @@ func ExpectComplete(t assert.TestingT, shell string, cmdStr string, expected str
 		if h, ok := t.(interface{ Helper() }); ok {
 			h.Helper()
 		}
-		assert.Equalf(t, expected, actual, "completion does not match\n"+compilePath+":0")
+		require.Equalf(t, expected, actual, "completion does not match\n"+compilePath+":0")
 	}
 }
 
