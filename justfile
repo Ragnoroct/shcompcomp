@@ -96,7 +96,7 @@ logs:
   | sed -u s/"RESULTS FAIL"/"$red&$reset"/i \
   | sed -u s/"\(FAIL\)\(.*\)\(test.*\)"/"$red\1$reset\2$cyan\3$reset"/i \
   | sed -u s/"FAIL"/"$red&$reset"/i \
-  | sed -u s/"=== TEST .*"/"$cyan&$reset"/i \
+  | sed -u s/"TEST:.*"/"$cyan&$reset"/i \
   | sed -u s/PASS/"$green&$reset"/i \
   | sed -u s/WARNING/"$yellow&$reset"/i \
   ;
@@ -116,6 +116,10 @@ build-watch:
 
     log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
     inotify_action () {
+      [[ "${path_rel: -1}" == "~" ]] && return
+      [[ "$path_rel" =~ ^(.git/|.idea/|build/|scratch/|archive/|compile/) ]] && return
+      [[ "$path_rel" =~ (.lock|.log)$ ]] && return
+
       if [[ "$1" =~ ".go"$ && ! "$1" =~ "_test.go"$ && ! "$1" =~ "testutil.go"$ ]]; then
         profile_start="$EPOCHREALTIME"
         if ! build_out="$(go build -o "build/bctils" 2>&1 1>&3)"; then

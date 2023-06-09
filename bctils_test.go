@@ -4,60 +4,72 @@ import (
 	"bctils/pkg/lib"
 	"bctils/pkg/testutil"
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"github.com/stretchr/testify/suite"
+	"io"
 	"log"
 	"os"
 	"path"
 	"testing"
-	"time"
 )
 
-func TestMain(m *testing.M) {
-	defer setupLogger()()
-	log.Printf("=== RUNNING TESTS")
-	code := m.Run()
-	if code == 1 {
-		log.Printf("=== RESULTS FAIL : %s", time.Now().Format("3:4:5.000"))
-	} else {
-		log.Printf("=== RESULTS PASS : %s", time.Now().Format("3:4:5.000"))
-	}
-	os.Exit(code)
+var loggerCleanup func()
+
+func TestSuite(t *testing.T) {
+	suite.Run(t, new(MainTestSuite))
 }
 
-func TestCompleteResponses(t *testing.T) {
-	ctx := TestContext{t: t}
-	ctx.Run("simple output", func(ctx TestContext) {
+type MainTestSuite struct {
+	suite.Suite
+}
+
+func (suite *MainTestSuite) SetupSuite() {
+	loggerCleanup = setupLogger()
+	log.Printf("RUNNING TESTS")
+}
+
+func (suite *MainTestSuite) TearDownSuite() {
+	defer loggerCleanup()
+}
+
+func (suite *MainTestSuite) AssertComplete(shell, cmdStr string, expected string) {
+	suite.T().Helper()
+	testutil.ExpectComplete(suite.T(), shell, cmdStr, expected)
+}
+
+func (suite *MainTestSuite) TestCases() {
+	suite.Run("simple", func() {
 		shell := testutil.ParseOperationsStdinHelper(`
 			cfg cli_name=bobman
 			opt "-h"
 			opt "--help"
 		`)
-		testutil.ExpectComplete(ctx.t, shell, "bobman ", "-h --help")
-		testutil.ExpectComplete(ctx.t, shell, "bobman --he", "--help")
-		testutil.ExpectComplete(ctx.t, shell, "bobman -h", "")
+		suite.AssertComplete(shell, "bobman ", "-h --help")
+		suite.AssertComplete(shell, "bobman --he", "--help")
+		suite.AssertComplete(shell, "bobman -h", "")
 	})
+	suite.Run("sort results by pos -> --help option", func() {})
 }
 
-func TestMainCalls(t *testing.T) {
-	ctx := TestContext{t: t}
-	ctx.Run("outputs to stdout", func(ctx TestContext) {
-		stdout := mainWithStdout(
-			[]string{"bctils", "-"},
-			`
+func (suite *MainTestSuite) TestMainToStdout() {
+	stdout := mainWithStdout(
+		[]string{"bctils", "-"},
+		`
 			cfg cli_name=bobman
 			cfg outfile=-
 			opt "-h"
 			opt "--help"
 			`,
-		)
-		if len(stdout) == 0 {
-			ctx.t.Fatalf("stdout from calling main produced no output")
-		}
-	})
-	ctx.Run("sort results by pos -> --help option", nil)
+	)
+	if len(stdout) == 0 {
+		suite.T().Fatalf("stdout from calling main produced no output")
+	}
 }
 
-func TestEndToEndAutoGenWithReload(t *testing.T) {
+func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
+	t := suite.T()
 	tmpDir := t.TempDir()
 
 	writeFile := func(filename string, value string) {
@@ -67,45 +79,72 @@ func TestEndToEndAutoGenWithReload(t *testing.T) {
 	}
 
 	writeFile("cmd.py", `
-		from argparse import ArgumentParser
-		parser = ArgumentParser()
-		parser.add_argument("--awesome")
-	`)
+			from argparse import ArgumentParser
+			parser = ArgumentParser()
+			parser.add_argument("--awesome")
+		`)
 
 	writeFile("cmdlib.sh", fmt.Sprintf(`
-		cmd_autogen_piper () {
-			cat %s
-		}
-	`, path.Join(tmpDir, "cmd.py")))
+			cmd_autogen_piper () {
+				cat %s
+			}
+		`, path.Join(tmpDir, "cmd.py")))
 
 	completeFile := path.Join(tmpDir, "cmd.bash")
 	mainWithStdout(
 		[]string{"-"},
 		fmt.Sprintf(
 			`
-			cfg cli_name=bobman
-			cfg autogen_lang=py
-			cfg autogen_closure_func=cmd_autogen_piper
-			cfg autogen_closure_source=%s
-			cfg autogen_reload_trigger=%s
-			cfg outfile=%s
-			`,
+				cfg cli_name=bobman
+				cfg autogen_lang=py
+				cfg autogen_closure_func=cmd_autogen_piper
+				cfg autogen_closure_source=%s
+				cfg autogen_reload_trigger=%s
+				cfg outfile=%s
+				`,
 			path.Join(tmpDir, "cmdlib.sh"),
 			path.Join(tmpDir, "cmd.py"),
 			completeFile,
 		),
 	)
 
+	hashFile := func(filename string) string {
+		filename = path.Join(tmpDir, filename)
+		hasher := md5.New()
+		f, err := os.Open(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer func(f *os.File) {
+			err := f.Close()
+			if err != nil {
+				panic(err)
+			}
+		}(f)
+		if _, err := io.Copy(hasher, f); err != nil {
+			log.Fatal(err)
+		}
+		return hex.EncodeToString(hasher.Sum(nil))
+	}
+
 	// todo: test that it only reloads when changes are made to trigger files
 	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome")
 
+	hashBeforeReload := hashFile("cmd.bash")
+
 	writeFile("cmd.py", `
-		from argparse import ArgumentParser
-		parser = ArgumentParser()
-		parser.add_argument("--awesome-times-infinity")
-	`)
+			from argparse import ArgumentParser
+			parser = ArgumentParser()
+			parser.add_argument("--awesome-times-infinity")
+		`)
 
 	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome-times-infinity")
+	hashAfterReload := hashFile("cmd.bash")
+	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome-times-infinity")
+	hashAfterNoReload := hashFile("cmd.bash")
+
+	suite.NotEqual(hashBeforeReload, hashAfterReload)
+	suite.Equal(hashAfterNoReload, hashAfterReload)
 }
 
 func mainWithStdout(args []string, stdin string) (stdout string) {

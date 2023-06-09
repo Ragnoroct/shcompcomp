@@ -4,6 +4,7 @@ import (
 	"bctils/pkg/lib"
 	"bytes"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"io"
 	"os"
 	"os/exec"
@@ -111,12 +112,17 @@ func ExpectCompleteFile(t *testing.T, shellFile string, cmdStr string, expected 
 	}
 }
 
-func ExpectComplete(t *testing.T, shell string, cmdStr string, expected string) {
-	t.Helper()
+func ExpectComplete(t assert.TestingT, shell string, cmdStr string, expected string) {
 	completer := Completer(shell)
 	actual := strings.TrimRight(completer.Complete(cmdStr), "\n \t")
 	if actual != expected {
-		testname := t.Name()
+		testname := "unknowntestname"
+		if n, ok := t.(interface {
+			Name() string
+		}); ok {
+			testname = n.Name()
+		}
+
 		pwd, _ := os.Getwd()
 		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
 		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
@@ -125,16 +131,10 @@ func ExpectComplete(t *testing.T, shell string, cmdStr string, expected string) 
 		compilePath := path.Join(pwd, "compile/"+testname)
 		_ = os.WriteFile(compilePath, []byte(shell), 0644)
 
-		t.Fatalf(
-			"\n%s\n"+
-				"     cmd: '%s'\n"+
-				"  actual: '%s'\n"+
-				"expected: '%s'\n",
-			"./"+strings.TrimPrefix(compilePath, pwd+"/")+":0:",
-			cmdStr,
-			actual,
-			expected,
-		)
+		if h, ok := t.(interface{ Helper() }); ok {
+			h.Helper()
+		}
+		assert.Equal(t, expected, actual)
 	}
 }
 

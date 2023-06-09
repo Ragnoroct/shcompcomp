@@ -17,9 +17,6 @@ var lang *sitter.Language
 
 func GeneratePythonOperations2(cli lib.Cli) lib.Cli {
 	var operations = cli.Operations
-	//operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_ARGS_VERBATIM="%s"`, argsVerbatim))
-	//operations = append(operations, fmt.Sprintf(`cfg AUTOGEN_OUTFILE="%s"`, outFile))
-	//operations = append(operations, fmt.Sprintf(`cfg RELOAD_FILE_TRIGGER="%s"`, srcFile))
 
 	if cli.Config.AutogenClosureFunc != "" {
 		src := callBashClosureFunc(cli.Config.AutogenClosureSource, cli.Config.AutogenClosureFunc)
@@ -28,6 +25,16 @@ func GeneratePythonOperations2(cli lib.Cli) lib.Cli {
 		src := runCmd(cli.Config.AutogenClosureCmd)
 		operations = append(operations, parseSrc(src)...)
 	}
+
+	// strip int operations
+	var newOperations []string
+	for _, op := range operations {
+		if strings.HasPrefix(op, "int ") {
+			continue
+		}
+		newOperations = append(newOperations, op)
+	}
+	operations = newOperations
 
 	cli = lib.ParseOperations(strings.Join(operations, "\n"))
 	return cli

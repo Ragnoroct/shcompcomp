@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestAutoGen(t *testing.T) {
+func TestAutoGen(t *testing.TB) {
 	runSubtest(t, "simple subparser", func(t *testing.T) {
 		expectOperations(
 			t,
