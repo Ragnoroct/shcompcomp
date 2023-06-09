@@ -134,7 +134,7 @@ func ExpectComplete(t assert.TestingT, shell string, cmdStr string, expected str
 		if h, ok := t.(interface{ Helper() }); ok {
 			h.Helper()
 		}
-		assert.Equal(t, expected, actual)
+		assert.Equalf(t, expected, actual, "completion does not match\n"+compilePath+":0")
 	}
 }
 

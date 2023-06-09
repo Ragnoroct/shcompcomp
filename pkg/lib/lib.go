@@ -208,7 +208,8 @@ type templateData struct {
 func (d templateData) ParserNameMap() map[string]string {
 	parserNames := make(map[string]string, len(d.Cli.Parsers.parserSeq))
 	for _, name := range d.Cli.Parsers.parserSeq {
-		parserNames[string(name)] = cleanShellIdentifier(string(name))
+		parserNameCommaSep := strings.ReplaceAll(string(name), ".", ",")
+		parserNames[parserNameCommaSep] = cleanShellIdentifier(string(name))
 	}
 	return parserNames
 }

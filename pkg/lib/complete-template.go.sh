@@ -31,7 +31,7 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
   {{ end }}
   {{- end }}
 
-  # todo: fix _get_comp_words_by_ref dependency on bash-completion
+  # todo: _get_comp_words_by_ref remove dependency on bash-completion repo
   # shellcheck disable=SC2034
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
@@ -41,7 +41,7 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
 
   local -A used_options=()
   local carg_index=0
-  local i=-1
+  local i=0 # skip first word
   local current_parser=""
   local current_parser_clean=""
   local completing_option_val=0
