@@ -3,6 +3,7 @@ package lib
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -438,6 +439,23 @@ func ParseOperations(operationsStr string) Cli {
 	cli.Parsers = &parsers
 	cli.Operations = operationLinesParsed
 	return cli
+}
+
+func CommitCli(cli Cli, compiled string, stdout io.Writer) error {
+	var err error
+	if cli.Config.Outfile == "-" {
+		_, err = fmt.Fprint(stdout, compiled)
+		if err != nil {
+			return errors.New("unable to write shell to stdout")
+		}
+	} else {
+		outfile := cli.Config.Outfile
+		err = os.WriteFile(outfile, []byte(compiled), 0664)
+		if err != nil {
+			return errors.New("unable to write shell to outfile")
+		}
+	}
+	return nil
 }
 
 func CompileCli(cli Cli) (string, error) {

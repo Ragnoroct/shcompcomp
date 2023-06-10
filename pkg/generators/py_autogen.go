@@ -3,11 +3,13 @@ package generators
 import (
 	"bctils/pkg/lib"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"strings"
@@ -450,7 +452,11 @@ func (b *bashProcess) runClosure(closureFile string, closureName string) string 
 func runCmd(cmd string) string {
 	out, err := exec.Command(cmd).Output()
 	if err != nil {
-		panic(err)
+		if errors.Is(err, fs.ErrPermission) {
+			panic("command is not executable!")
+		} else {
+			panic(err)
+		}
 	}
 	return string(out)
 }

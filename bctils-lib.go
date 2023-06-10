@@ -4,6 +4,7 @@ import (
 	"bctils/pkg/generators"
 	"bctils/pkg/lib"
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -41,46 +42,11 @@ func entry(stdin io.Reader, stdout io.Writer, stderr io.Writer, options Options)
 			return 0
 		}
 	} else {
-		infile := options.args[0]
-		if infile == "-" {
-			content, err := io.ReadAll(stdin)
-			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s\n", err)
-				return 1
-			} else if len(content) == 0 {
-				_, _ = fmt.Fprintf(stderr, "stdin is empty\n")
-				return 1
-			}
-
-			cli := lib.ParseOperations(string(content))
-
-			if cli.Config.AutogenLang == "py" {
-				cli = generators.GeneratePythonOperations2(cli)
-			}
-			compiledShell, err := lib.CompileCli(cli)
-			if err != nil {
-				_, _ = fmt.Fprintf(stderr, "%s\n", err)
-				return 1
-			}
-
-			if cli.Config.Outfile == "-" {
-				_, err = fmt.Fprint(stdout, compiledShell)
-				if err != nil {
-					_, _ = fmt.Fprintf(stderr, "%s\n", err)
-					return 1
-				}
-			} else {
-				outfile := cli.Config.Outfile
-				err = os.WriteFile(outfile, []byte(compiledShell), 0664)
-				if err != nil {
-					_, _ = fmt.Fprintf(stderr, "%s\n", err)
-					return 1
-				}
-			}
-			return 0
-		} else {
-			_, _ = fmt.Fprintf(stderr, "must provide - as first argument\n")
+		err := HandleCompileShell(options.args[0], stdin, stdout, stderr)
+		if err != nil {
 			return 1
+		} else {
+			return 0
 		}
 	}
 }
@@ -134,6 +100,40 @@ func main() {
 
 		_, err = os.Stdout.WriteString(compiledShell)
 		lib.Check(err)
+	}
+}
+
+func HandleCompileShell(infile string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	if infile == "-" {
+		content, err := io.ReadAll(stdin)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "%s\n", err)
+			return errors.New("unable to read stdin")
+		} else if len(content) == 0 {
+			_, _ = fmt.Fprintf(stderr, "stdin is empty\n")
+			return errors.New("stdin is empty but infile is - ")
+		}
+
+		cli := lib.ParseOperations(string(content))
+
+		if cli.Config.AutogenLang == "py" {
+			cli = generators.GeneratePythonOperations2(cli)
+		}
+
+		compiledShell, err := lib.CompileCli(cli)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "%s\n", err)
+			return errors.New("unable to compile shell")
+		}
+		err = lib.CommitCli(cli, compiledShell, stdout)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "%s\n", err)
+			return errors.New("unable to commit shell")
+		}
+		return nil
+	} else {
+		_, _ = fmt.Fprintf(stderr, "must provide - as first argument\n")
+		return errors.New("infile as other files not implemented yet")
 	}
 }
 

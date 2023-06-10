@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 )
 
 var loggerCleanup func()
@@ -273,6 +274,7 @@ func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
 			parser = ArgumentParser()
 			parser.add_argument("--awesome-times-infinity")
 		`)
+	time.Sleep(time.Millisecond) // allow reload to pickup time change
 
 	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome-times-infinity")
 	hashAfterReload := hashFile("cmd.bash")

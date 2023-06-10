@@ -3,7 +3,7 @@ test test_name="":
   title="test"
   proj_dir="$PWD"
 
-  echo -ne "\e[22;0t"; printf "\e]0;%s %s\007" "$title" "strt"; trap 'echo -ne "\e[23;0t"' EXIT
+  echo -ne "\e[22;0t"; printf "\e]0;%s %s\007" "$title" "init"; trap 'echo -ne "\e[23;0t"' EXIT
 
   red="$(tput setaf 1)"
   green="$(tput setaf 2)"
@@ -24,24 +24,30 @@ test test_name="":
       test_call+=(-run {{test_name}})
     fi
     echo "${test_call[*]}"
-    results=$("${test_call[@]}" 2>&1)
-    status_code="$?"
 
-    echo "$results" \
-    | sed s/FAIL/"$red&$reset"/i \
-    | sed s/PASS/"$green&$reset"/i \
-    | sed s/WARNING/"$yellow&$reset"/i \
-    ;
 
-    if [[ "$results" =~ "build failed" ]]; then
+    profile_start_tests="$EPOCHREALTIME"
+    "${test_call[@]}" 2>&1 \
+      | clean_stack.pl \
+      | sed s/"FAIL"/"$red&$reset"/i \
+      | sed s/"PASS\|ok"/"$green&$reset"/i \
+      | sed s/"WARNING"/"$yellow&$reset"/i \
+      | tee /tmp/bashcompletils-test-results \
+      ;
+    status_test="${PIPESTATUS[0]}"
+    status_build="${PIPESTATUS[1]}"
+    profile_end_tests="$EPOCHREALTIME"
+    profile_tests="$(bc <<< "(($profile_end_tests-$profile_start_tests)*10000)/10")"
+
+    if [[ "$status_build" == 2 ]]; then
       log "[tests] compile error"
-      printf "\e]0;%s %s\007" "$title" "cerr"
-    elif [[ "$status_code" != 0 ]]; then
-      log "[tests] fail"
-      printf "\e]0;%s %s\007" "$title" "fail"
+      printf "\e]0;%s %s %3dms\007" "$title" "cerr" "$profile_tests"
+    elif [[ "$status_test" != 0 ]]; then
+      log "[tests] fail ${profile_tests}ms\n$(cat "/tmp/bashcompletils-test-results")"
+      printf "\e]0;%s %s %3dms\007" "$title" "fail" "$profile_tests"
     else
-      log "[tests] pass"
-      printf "\e]0;%s %s\007" "$title" "pass"
+      log "[tests] pass ${profile_tests}ms"
+      printf "\e]0;%s %s %3dms\007" "$title" "pass" "$profile_tests"
     fi
 
     echo -e "${magenta}DONE${reset}: $(date '+%T.%3N')"

@@ -3,8 +3,10 @@ package generators
 import (
 	"bctils/pkg/lib"
 	"bctils/pkg/testutil"
+	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/suite"
+	"path"
 	"testing"
 )
 
@@ -26,6 +28,22 @@ func (suite *Suite) AutogenParse(src string) string {
 	`, filename))
 	cli = GeneratePythonOperations2(cli)
 	shell, err := lib.CompileCli(cli)
+	if err != nil {
+		panic(err)
+	}
+	return shell
+}
+
+func (suite *Suite) AutogenParseCfg(cfg string, values ...any) string {
+	var nullbuffer bytes.Buffer
+	cfg = fmt.Sprintf(cfg, values...)
+	cli := lib.ParseOperations(cfg)
+	cli = GeneratePythonOperations2(cli)
+	shell, err := lib.CompileCli(cli)
+	if err != nil {
+		panic(err)
+	}
+	err = lib.CommitCli(cli, shell, &nullbuffer)
 	if err != nil {
 		panic(err)
 	}
@@ -127,10 +145,162 @@ func (suite *Suite) TestTripleLayerSubparser() {
 	suite.RequireComplete(shell, "testcli parser-b parser-c ", "--help-c")
 }
 
+func (suite *Suite) TestChooseOutfile() {
+	file := suite.CreateFile("file.py", `
+		from argparse import ArgumentParser
+		parser = ArgumentParser()
+		parser.add_argument("--help")
+	`)
+
+	outfile := path.Join(suite.TempDir(), "outfile.bash")
+
+	suite.AutogenParseCfg(
+		`
+		cfg cli_name=testcli
+		cfg autogen_lang=py
+		cfg autogen_file=%s
+		cfg outfile=%s
+		`,
+		file,
+		outfile,
+	)
+	suite.RequireCompleteFile(outfile, "testcli ", "--help")
+}
+
+func (suite *Suite) TestSrcFromFile() {
+	file := suite.CreateFile("file.py", `
+		from argparse import ArgumentParser
+		parser = ArgumentParser()
+		parser.add_argument("--help")
+	`)
+
+	shell := suite.AutogenParseCfg(
+		`
+		cfg cli_name=testcli
+		cfg autogen_lang=py
+		cfg autogen_file=%s
+		cfg outfile=-
+		`,
+		file,
+	)
+	suite.RequireComplete(shell, "testcli ", "--help")
+}
+
+func (suite *Suite) TestSrcFromBashFunction() {
+	cmdlibfile := suite.CreateFile("cmdlib.sh", `
+		__my_piper_func () {
+		cat - <<EOF
+		from argparse import ArgumentParser
+		parser = ArgumentParser()
+		parser.add_argument("--help")
+		EOF
+		}
+	`)
+
+	shell := suite.AutogenParseCfg(
+		`
+		cfg cli_name=testcli
+		cfg autogen_lang=py
+		cfg autogen_closure_func=__my_piper_func
+		cfg autogen_closure_source=%s
+		cfg outfile=-
+		`,
+		cmdlibfile,
+	)
+
+	suite.RequireComplete(shell, "testcli ", "--help")
+}
+
+func (suite *Suite) TestSrcFromCmd() {
+	commandfile := suite.CreateFile("command_file", `
+		#!/usr/bin/bash
+		cat - <<EOF
+		from argparse import ArgumentParser
+		parser = ArgumentParser()
+		parser.add_argument("--help")
+		EOF
+	`, 0744)
+
+	shell := suite.AutogenParseCfg(
+		`
+		cfg cli_name=testcli
+		cfg autogen_lang=py
+		cfg autogen_closure_cmd=%s
+		cfg outfile=-
+		`,
+		commandfile,
+	)
+
+	suite.RequireComplete(shell, "testcli ", "--help")
+}
+
 func (suite *Suite) FutureTests() {
 	suite.Run("order of operations is always the same", func() {})
 	suite.Run("options with values", func() {})
 	suite.Run("options with values", func() {})
 	suite.Run("allow closures through comments", func() {})
 	suite.Run("work with multiple files with same parser", func() {})
+	suite.Run("custom log", func() {})
+	suite.Run("source ~/.bashrc is FAST with MANY 'autogen calls'", func() {})
+	suite.Run("cache all compiles", func() {})
+	suite.Run("move tests into golang environment", func() {})
+	suite.Run("adding to .bashrc and removing it still adds time and is accumalative", func() {})
+	suite.Run("positionals without hints are recognized countwise", func() {})
+	suite.Run("py_autogen detect disabling --help/-h", func() {})
+	suite.Run("bctils_autogen specify out file", func() {})
+	suite.Run("exclusive options --vanilla --chocolate", func() {})
+	suite.Run("complete option value like --opt=value", func() {})
+	suite.Run("add flag to auto add = if only one arg option left and it requires an argument", func() {})
+	suite.Run("complete single -s type options like -f filepath", func() {})
+	suite.Run("complete single -s type options like -ffilepath (if that makes sense)", func() {})
+	suite.Run("arbitrary rules like -flags only before positionals", func() {})
+	suite.Run("arbitrary rules like --options values only or --options=values only for long args (getopt bug)", func() {})
+	suite.Run("simple options and arguments with nargs=*", func() {})
+	suite.Run("more complex autocomplete in different parts of command", func() {})
+	suite.Run("advanced subparsers with options + arguments at different levels", func() {})
+	suite.Run("cache based on input argument streams", func() {})
+	suite.Run("feature complete existing", func() {})
+	suite.Run("benchmark testing compilation", func() {})
+	suite.Run("benchmark testing compilation caching", func() {})
+	suite.Run("benchmark testing autogeneration of python script", func() {})
+	suite.Run("benchmark source bctils lib", func() {})
+	suite.Run("benchmark source compiled scripts", func() {})
+	suite.Run("use -- in util scripts to separate arguments from options", func() {})
+	suite.Run("allow single -longopt like golang", func() {})
+	suite.Run("allow opt=val and opt val", func() {})
+	suite.Run("tab complete opt -> opt=", func() {})
+	suite.Run("choices for options with arguments", func() {})
+	suite.Run("scan python script for auto generate", func() {})
+	suite.Run("get compiled script version", func() {})
+	suite.Run("multiple functions to single file", func() {})
+	suite.Run("compiled scripts are slim and simplified", func() {})
+	suite.Run("provide custom functions -F to autocomplete arguments and options", func() {})
+	suite.Run("provide custom functions -F to autocomplete subparsers arguments and options", func() {})
+	suite.Run("provide custom functions -F to autocomplete option values", func() {})
+	suite.Run("provide custom functions -F to autocomplete subparsers option values", func() {})
+	suite.Run("nargs with known number", func() {})
+	suite.Run("nargs with unknown number", func() {})
+	suite.Run("invalid usages of bctil utility functions", func() {})
+	suite.Run("stateless in environment after compilation. no leftover variables.", func() {})
+	suite.Run("zero logging when in production mode", func() {})
+	suite.Run("doesnt share variable state between different cli_name", func() {})
+	suite.Run("can provide autocompletion custom git extensions", func() {})
+	suite.Run("has full documentation", func() {})
+	suite.Run("compatable with bash,sh,zsh,ksh,msys2,fish,cygwin,bashwin (docker emulation)", func() {})
+	suite.Run("is fast with very large complete options like aws", func() {})
+	suite.Run("minimal forks in completion", func() {})
+	suite.Run("minimal memory usage in completion", func() {})
+	suite.Run("easy to install", func() {})
+	suite.Run("install with choice of plugins", func() {})
+	suite.Run("git plugin", func() {})
+	suite.Run("npm plugin", func() {})
+	suite.Run("autogen_py plugin", func() {})
+	suite.Run("autogen_node plugin", func() {})
+	suite.Run("autogen_golang plugin", func() {})
+	suite.Run("autogen_sh plugin", func() {})
+	suite.Run("compiled scripts are actually readable", func() {})
+	suite.Run("compiled scripts contain auto-generated comment and license", func() {})
+	suite.Run("project is licensed", func() {})
+	suite.Run("order of options added and argument choices is order shown", func() {})
+	suite.Run("all error messages match current script name", func() {})
 }

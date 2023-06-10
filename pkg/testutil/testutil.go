@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -54,19 +55,40 @@ func (suite *BaseSuite) RequireComplete(shell, cmdStr string, expected string) {
 	ExpectComplete(suite.T(), shell, cmdStr, expected)
 }
 
-func (suite *BaseSuite) CreateFile(filename string, contents string) (filepath string) {
+func (suite *BaseSuite) RequireCompleteFile(file, cmdStr string, expected string) {
+	suite.T().Helper()
+	ExpectCompleteFile(suite.T(), file, cmdStr, expected)
+}
+
+func (suite *BaseSuite) CreateFile(filename string, contents string, rest ...any) (filepath string) {
 	if suite.tmpdir == "" {
 		suite.tmpdir = suite.T().TempDir()
 	}
 
+	permission := 0644
+
+	if len(rest) > 0 {
+		switch v := rest[0].(type) {
+		case int:
+			permission = v
+		}
+	}
+
 	filepath = path.Join(suite.tmpdir, filename)
 	contents = lib.Dedent(contents)
-	err := os.WriteFile(filepath, []byte(contents), 0644)
+	err := os.WriteFile(filepath, []byte(contents), fs.FileMode(permission))
 	if err != nil {
 		panic(err)
 	}
 
 	return filepath
+}
+
+func (suite *BaseSuite) TempDir() (filepath string) {
+	if suite.tmpdir == "" {
+		suite.tmpdir = suite.T().TempDir()
+	}
+	return suite.tmpdir
 }
 
 type CompleterProcess struct {
@@ -206,24 +228,6 @@ func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected st
 	}
 }
 
-func MockOsStdin(content string) (cleanup func()) {
-	oldOsStdin := os.Stdin
-
-	tmpfile, _ := os.CreateTemp(os.TempDir(), "bctils-tests")
-	contentBytes := []byte(content)
-
-	_, _ = tmpfile.Write(contentBytes)
-	_, _ = tmpfile.Seek(0, 0)
-	os.Stdin = tmpfile
-	return func() {
-		os.Stdin = oldOsStdin
-		err := os.Remove(tmpfile.Name())
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
 type StdoutMock struct {
 	pipeWriter *os.File
 	pipeReader *os.File
@@ -237,20 +241,6 @@ func (stdout StdoutMock) GetString() string {
 	return buf.String()
 }
 
-func MockOsStdout() (cleanup func(), stdout *StdoutMock) {
-	oldOsStdout := os.Stdout
-	reader, writer, _ := os.Pipe()
-	stdoutMock := StdoutMock{
-		pipeWriter: writer,
-		pipeReader: reader,
-	}
-	os.Stdout = stdoutMock.pipeWriter
-	return func() {
-		os.Stdout = oldOsStdout
-	}, &stdoutMock
-}
-
-// todo: check stderr for errors
 func startProcess(shellCode string, filename string) (chan string, chan string, *io.WriteCloser) {
 	var err error
 	var bashOutBuffer []byte
