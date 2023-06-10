@@ -85,6 +85,10 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
     fi
   done
 
+  if [[ "$carg_index" == 0 ]]; then
+    carg_index=1  # todo: this is a hack. figure out how to properly get positional number based on line
+  fi
+
   if [[ -z "$current_parser" ]]; then
     parser="{{.DefaultParserClean}}"
   else
@@ -144,11 +148,11 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
   fi
 }
 
-{{/*{{if .Cli.Config.SourceIncludes}}*/}}
-{{/*{{range .Cli.Config.SourceIncludes -}}*/}}
-{{/*source "{{.}}"*/}}
-{{/*{{end}}*/}}
-{{/*{{end}}*/}}
+{{if .Cli.Config.IncludeSources}}
+{{range .Cli.Config.IncludeSources -}}
+source "{{.}}"
+{{end}}
+{{end}}
 
 {{if .Cli.Config.AutogenReloadTriggers}}
 __bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} () {

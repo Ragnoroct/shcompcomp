@@ -144,6 +144,47 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli ", "c8 c9 c10 --awesome --print")
 	})
 
+	suite.Run("include other source files", func() {
+		filepath := suite.CreateFile("lib.sh", `
+			__testcli_pos_1_completer() {
+				mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
+			}
+		`)
+		shellUnsourced := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --closure="__testcli_pos_1_completer"
+			opt --awesome
+			opt --print
+		`)
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			cfg include_source="%s"
+			pos --closure="__testcli_pos_1_completer"
+			opt --awesome
+			opt --print
+		`, filepath)
+		suite.RequireComplete(shell, "testcli ", "c8 c9 c10 --awesome --print")
+		suite.RequireComplete(shellUnsourced, "testcli ", "--awesome --print")
+	})
+
+	suite.Run("simple options with arguments like --opt val", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			opt "--key" --choices="val1 val2"
+			opt "--tree" --closure="__testcli_completer"
+		`)
+		shell += lib.Dedent(`
+			__testcli_completer() {
+				mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
+			}
+		`)
+		suite.RequireComplete(shell, "testcli ", "--key --tree")
+		suite.RequireComplete(shell, "testcli --key ", "val1 val2")
+		suite.RequireComplete(shell, "testcli --tree ", "c8 c9 c10")
+	})
+}
+
+func (suite *MainTestSuite) FutureTests() {
 	suite.Run("subparsers cmds are always the first positional and cannot clash", func() {})
 	suite.Run("error handling", func() {})
 	suite.Run("compile to target file", func() {})

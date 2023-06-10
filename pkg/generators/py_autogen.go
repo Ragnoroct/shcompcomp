@@ -4,6 +4,7 @@ import (
 	"bctils/pkg/lib"
 	"context"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
 	"io"
@@ -24,6 +25,12 @@ func GeneratePythonOperations2(cli lib.Cli) lib.Cli {
 	} else if cli.Config.AutogenClosureCmd != "" {
 		src := runCmd(cli.Config.AutogenClosureCmd)
 		operations = append(operations, parseSrc(src)...)
+	} else {
+		content, err := os.ReadFile(cli.Config.AutogenFile)
+		if err != nil {
+			panic(err)
+		}
+		operations = append(operations, parseSrc(string(content))...)
 	}
 
 	// strip int operations
@@ -209,6 +216,7 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 					parentParser.subParserList = append(parentParser.subParserList, &newParser)
 					callGraph.parserSequence = append(callGraph.parserSequence, &newParser)
 					callGraph.subparsersParents[callObjectIdentifier] = parentParser
+					log.Printf("new parser: %s", parserName)
 				}
 			}
 
@@ -231,29 +239,15 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 
 	var operations []string
 	for _, parser := range callGraph.parserSequence {
-		// add --choices for subparser names
-		subparserNames := make([]string, len(parser.subParserList))
-		for i, subparser := range parser.subParserList {
-			subparserNames[i] = subparser.parserName
-		}
-		if len(subparserNames) > 0 {
-			var operation []string
-			operation = append(operation, "pos")
-			if parser.parserName != "" {
-				parsersString := parser.parserName
-				for {
-					parentParser := parser.parserParent
-					if parentParser == nil || parentParser.parserName == "" {
-						break
-					}
-					parsersString = parentParser.parserName + "." + parsersString
-				}
-				operation = append(operation, fmt.Sprintf(`-p="%s"`, parsersString))
+		var operation []string
+		if parser.parserParent != nil {
+			operation = append(operation, "psr")
+			if parser.parserParent.parserName != "" {
+				operation = append(operation, fmt.Sprintf(`-p="%s"`, parser.parserParent.parserName))
 			}
-			operation = append(operation, fmt.Sprintf(`--choices="%s"`, strings.Join(subparserNames, " ")))
+			operation = append(operation, fmt.Sprintf(`"%s"`, parser.parserName))
 			operations = append(operations, strings.Join(operation, " "))
 		}
-
 		for _, addArgumentCall := range parser.addArgumentCalls {
 			if addArgumentCall.args.Empty() {
 				panic("zero arguments in add_argument call")

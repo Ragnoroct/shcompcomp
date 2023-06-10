@@ -27,10 +27,11 @@ const (
 
 type CliParserName string
 type CliParser struct {
-	parserName  CliParserName
-	subparsers  map[CliParserName]bool
-	positionals []CliPositional
-	optionals   []CliOptional
+	parserName    CliParserName
+	subparsers    map[CliParserName]bool
+	subparsersSeq []string
+	positionals   []CliPositional
+	optionals     []CliOptional
 }
 
 type CliParsers struct {
@@ -87,7 +88,10 @@ func (parsers *CliParsers) addSubparserChoice(parserFQN CliParserName) {
 				if parserParent.subparsers == nil {
 					parserParent.subparsers = map[CliParserName]bool{}
 				}
-				parserParent.subparsers[parserName] = true
+				if _, ok := parserParent.subparsers[parserName]; !ok {
+					parserParent.subparsers[parserName] = true
+					parserParent.subparsersSeq = append(parserParent.subparsersSeq, string(parserName))
+				}
 				parsers.parserMap[parserParentName] = parserParent
 			}
 		}
@@ -142,11 +146,7 @@ func (parser CliParser) OptionalsData() map[string]string {
 }
 
 func (parser CliParser) Subparsers() []string {
-	var names []string
-	for subparserName, _ := range parser.subparsers {
-		names = append(names, string(subparserName))
-	}
-	return names
+	return parser.subparsersSeq
 }
 
 type CliPositional struct {
@@ -177,7 +177,9 @@ func (r ReloadTrigger) String() string {
 
 type CliConfig struct {
 	Outfile               string
+	IncludeSources        []string
 	AutogenLang           string
+	AutogenFile           string
 	AutogenClosureCmd     string
 	AutogenClosureFunc    string
 	AutogenClosureSource  string
@@ -311,8 +313,12 @@ func ParseOperations(operationsStr string) Cli {
 				cli.cliName = configValue
 			case "outfile":
 				cli.Config.Outfile = configValue
+			case "include_source":
+				cli.Config.IncludeSources = append(cli.Config.IncludeSources, configValue)
 			case "autogen_lang":
 				cli.Config.AutogenLang = configValue
+			case "autogen_file":
+				cli.Config.AutogenFile = configValue
 			case "autogen_closure_cmd":
 				cli.Config.AutogenClosureCmd = configValue
 			case "autogen_closure_func":
@@ -394,6 +400,31 @@ func ParseOperations(operationsStr string) Cli {
 			}
 
 			parsers.addOptional(opt)
+		case "psr":
+			// allow standalone subparsers that only do one thing
+			var parentParserName string
+			var parserName string
+			var parserFQN string
+
+			// -p=parser can come before name
+			if strings.HasPrefix(words[1], "-p=") {
+				if value, ok := tryOption(words[1], "-"); ok {
+					parentParserName = value
+					words = append(words[:1], words[1+1:]...)
+				}
+			} else {
+				parentParserName = DefaultParser
+			}
+
+			parserName = words[1]
+
+			if parentParserName == DefaultParser {
+				parserFQN = parserName
+			} else {
+				parserFQN = parentParserName + "." + parserName
+			}
+
+			parsers.addSubparserChoice(CliParserName(parserFQN))
 		default:
 			panic(fmt.Sprintf("error : unknown operation : %s", opType))
 		}

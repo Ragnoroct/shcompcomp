@@ -4,23 +4,76 @@ import (
 	"bctils/pkg/lib"
 	"bytes"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"io"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 )
 
 var mutex sync.Mutex
+var (
+	_, b, _, _ = runtime.Caller(0)
+	basepath   = filepath.Dir(b)
+)
+
+var loggerCleanup func()
+
+type BaseSuite struct {
+	suite.Suite
+	tmpdir string
+}
+
+func (suite *BaseSuite) SetupSuite() {
+	loggerCleanup = lib.SetupLogger()
+	log.Printf("RUNNING TESTS")
+}
+
+func (suite *BaseSuite) SetupTest() {
+	suite.tmpdir = ""
+}
+
+func (suite *BaseSuite) SetupSubTest() {
+	suite.tmpdir = ""
+}
+
+func (suite *BaseSuite) TearDownSuite() {
+	defer loggerCleanup()
+}
+
+func (suite *BaseSuite) RequireComplete(shell, cmdStr string, expected string) {
+	suite.T().Helper()
+	ExpectComplete(suite.T(), shell, cmdStr, expected)
+}
+
+func (suite *BaseSuite) CreateFile(filename string, contents string) (filepath string) {
+	if suite.tmpdir == "" {
+		suite.tmpdir = suite.T().TempDir()
+	}
+
+	filepath = path.Join(suite.tmpdir, filename)
+	contents = lib.Dedent(contents)
+	err := os.WriteFile(filepath, []byte(contents), 0644)
+	if err != nil {
+		panic(err)
+	}
+
+	return filepath
+}
 
 type CompleterProcess struct {
-	stdin   *io.WriteCloser
-	chanOut chan string
-	mutex   sync.Mutex
+	stdin      *io.WriteCloser
+	chanOut    chan string
+	chanStderr chan string
+	mutex      sync.Mutex
 }
 type completerProcesses struct {
 	processMap map[string]*CompleterProcess
@@ -36,11 +89,12 @@ func CompleterFile(shellFile string) *CompleterProcess {
 	if process, ok := processes.processMap[processKey]; ok {
 		return process
 	} else {
-		chanOut, stdin := startProcess("", shellFile)
+		chanOut, chanStderr, stdin := startProcess("", shellFile)
 		process = &CompleterProcess{
-			chanOut: chanOut,
-			stdin:   stdin,
-			mutex:   sync.Mutex{},
+			chanOut:    chanOut,
+			chanStderr: chanStderr,
+			stdin:      stdin,
+			mutex:      sync.Mutex{},
 		}
 
 		processes.processMap[processKey] = process
@@ -56,11 +110,12 @@ func Completer(completeShell string) *CompleterProcess {
 	if process, ok := processes.processMap[completeShell]; ok {
 		return process
 	} else {
-		chanOut, stdin := startProcess(completeShell, "")
+		chanOut, chanStderr, stdin := startProcess(completeShell, "")
 		process = &CompleterProcess{
-			chanOut: chanOut,
-			stdin:   stdin,
-			mutex:   sync.Mutex{},
+			chanOut:    chanOut,
+			chanStderr: chanStderr,
+			stdin:      stdin,
+			mutex:      sync.Mutex{},
 		}
 
 		processes.processMap[completeShell] = process
@@ -74,11 +129,25 @@ func (p *CompleterProcess) Complete(cmdStr string) string {
 
 	_, _ = io.WriteString(*p.stdin, cmdStr+"\n")
 	out := <-p.chanOut
+	outStderr := <-p.chanStderr
+	if outStderr != "" {
+		lines := strings.Split(outStderr, "\n")
+		nonPlus := false
+		for _, line := range lines {
+			if line != "" && !strings.HasPrefix(line, "+") {
+				nonPlus = true
+			}
+		}
+		if nonPlus {
+			panic("error : stderr : " + outStderr)
+		}
+	}
 	return strings.TrimRight(out, " \t\n")
 }
 
-func ParseOperationsStdinHelper(operations string) string {
+func ParseOperationsStdinHelper(operations string, values ...any) string {
 	var stdin bytes.Buffer
+	operations = fmt.Sprintf(operations, values...)
 	operations = lib.Dedent(operations)
 	stdin.Write([]byte(operations))
 	return lib.ParseOperationsStdin(&stdin)
@@ -123,12 +192,11 @@ func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected st
 			testname = n.Name()
 		}
 
-		pwd, _ := os.Getwd()
 		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
 		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
 		testname = strings.ToLower(testname)
 		testname += ".bash"
-		compilePath := path.Join(pwd, "compile/"+testname)
+		compilePath := path.Join(basepath, "../../compile/"+testname)
 		_ = os.WriteFile(compilePath, []byte(shell), 0644)
 
 		if h, ok := t.(interface{ Helper() }); ok {
@@ -183,10 +251,12 @@ func MockOsStdout() (cleanup func(), stdout *StdoutMock) {
 }
 
 // todo: check stderr for errors
-func startProcess(shellCode string, filename string) (chan string, *io.WriteCloser) {
+func startProcess(shellCode string, filename string) (chan string, chan string, *io.WriteCloser) {
 	var err error
 	var bashOutBuffer []byte
+	var stderrBuffer []byte
 	var chanOut = make(chan string)
+	var chanStderr = make(chan string)
 
 	var shellCodePrefix string
 	if shellCode != "" {
@@ -250,6 +320,8 @@ func startProcess(shellCode string, filename string) (chan string, *io.WriteClos
 	check(err)
 	stdout, err := proc.StdoutPipe()
 	check(err)
+	stderr, err := proc.StderrPipe()
+	check(err)
 	err = proc.Start()
 	check(err)
 
@@ -262,8 +334,11 @@ func startProcess(shellCode string, filename string) (chan string, *io.WriteClos
 			for i := 0; i < n; i++ {
 				if buff[i] == '\x00' {
 					out := string(bashOutBuffer)
+					outstderr := string(stderrBuffer)
 					bashOutBuffer = []byte{}
+					stderrBuffer = []byte{}
 					chanOut <- out
+					chanStderr <- outstderr
 				} else {
 					bashOutBuffer = append(bashOutBuffer, buff[i])
 				}
@@ -271,7 +346,19 @@ func startProcess(shellCode string, filename string) (chan string, *io.WriteClos
 		}
 	}()
 
-	return chanOut, &stdin
+	go func() {
+		var err error
+		var n int
+		buff := make([]byte, 256)
+		for err == nil {
+			n, err = stderr.Read(buff)
+			for i := 0; i < n; i++ {
+				stderrBuffer = append(stderrBuffer, buff[i])
+			}
+		}
+	}()
+
+	return chanOut, chanStderr, &stdin
 }
 
 func check(err error) {
