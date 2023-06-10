@@ -1,6 +1,9 @@
 test test_name="":
   #!/usr/bin/env bash
+  title="test"
   proj_dir="$PWD"
+
+  echo -ne "\e[22;0t"; printf "\e]0;%s %s\007" "$title" "strt"; trap 'echo -ne "\e[23;0t"' EXIT
 
   red="$(tput setaf 1)"
   green="$(tput setaf 2)"
@@ -21,14 +24,26 @@ test test_name="":
       test_call+=(-run {{test_name}})
     fi
     echo "${test_call[*]}"
-    "${test_call[@]}" \
+    results=$("${test_call[@]}" 2>&1)
+    status_code="$?"
+
+    echo "$results" \
     | sed s/FAIL/"$red&$reset"/i \
     | sed s/PASS/"$green&$reset"/i \
     | sed s/WARNING/"$yellow&$reset"/i \
     ;
-    if [[ "${PIPESTATUS[0]}" == 2 ]]; then
-      log "!!! go compilation error"
+
+    if [[ "$results" =~ "build failed" ]]; then
+      log "[tests] compile error"
+      printf "\e]0;%s %s\007" "$title" "cerr"
+    elif [[ "$status_code" != 0 ]]; then
+      log "[tests] fail"
+      printf "\e]0;%s %s\007" "$title" "fail"
+    else
+      log "[tests] pass"
+      printf "\e]0;%s %s\007" "$title" "pass"
     fi
+
     echo -e "${magenta}DONE${reset}: $(date '+%T.%3N')"
   }
 
@@ -40,7 +55,11 @@ test test_name="":
 
 logs:
   #!/usr/bin/env bash
+  title="logs"
   log_file="$HOME/bashscript.log"
+
+  echo -ne "\e[22;0t"; echo -ne "\e]0;$title\007"; trap 'echo -ne "\e[23;0t"' EXIT
+
   echo "tailing: $log_file"
   red="$(tput setaf 1)"
   green="$(tput setaf 2)"
@@ -62,7 +81,10 @@ logs:
 
 build-watch:
     #!/usr/bin/env bash
+    title="build"
     proj_dir="$PWD"
+
+    echo -ne "\e[22;0t"; echo -ne "\e]0;$title\007"; trap 'echo -ne "\e[23;0t"' EXIT
 
     red="$(tput setaf 1)"
     green="$(tput setaf 2)"
@@ -83,12 +105,14 @@ build-watch:
       if [[ "$1" =~ ".go"$ && ! "$1" =~ "_test.go"$ && ! "$1" =~ "testutil.go"$ ]]; then
         profile_start="$EPOCHREALTIME"
         if ! build_out="$(go build -o "build/bctils" 2>&1 1>&3)"; then
-          log "go compile FAIL:\n$build_out"
+          log "[build] compile error:\n$build_out"
         else
-          log "go compile PASS"
+          log "[build] compile success"
         fi
         profile_end="$EPOCHREALTIME"
-        echo "compiled: $(bc <<< "scale=2;(($profile_end-$profile_start)*10000)/10")ms - $1"
+        compile_ms="$(bc <<< "scale=2;(($profile_end-$profile_start)*10000)/10")"
+        printf "\e]0;%s %3dms\007" "$title" "${compile_ms%%.*}"
+        echo "compiled: ${compile_ms}ms - $1"
       fi
     }
 
