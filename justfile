@@ -110,7 +110,7 @@ build-watch:
 
       if [[ "$1" =~ ".go"$ && ! "$1" =~ "_test.go"$ && ! "$1" =~ "testutil.go"$ ]]; then
         profile_start="$EPOCHREALTIME"
-        if ! build_out="$(go build -o "build/bctils" 2>&1 1>&3)"; then
+        if ! build_out="$(go build -o "build/shcomp2" 2>&1 1>&3)"; then
           log "[build] compile error:\n$build_out"
         else
           log "[build] compile success"
@@ -132,4 +132,4 @@ build-watch:
 
 @build:
   mkdir -p "build"
-  go build -o "build/bctils"
+  go build -o "build/shcomp2"

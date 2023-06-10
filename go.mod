@@ -1,4 +1,4 @@
-module bctils
+module shcomp2
 
 go 1.20
 

@@ -1,7 +1,6 @@
 package generators
 
 import (
-	"bctils/pkg/lib"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"shcomp2/pkg/lib"
 	"strings"
 	"sync"
 )

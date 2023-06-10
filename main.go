@@ -1,14 +1,14 @@
 package main
 
 import (
-	"bctils/pkg/generators"
-	"bctils/pkg/lib"
 	"bufio"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"shcomp2/pkg/generators"
+	"shcomp2/pkg/lib"
 )
 
 type arrayFlags []string

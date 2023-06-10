@@ -58,10 +58,10 @@ __watchfile_main() {
 }
 
 __watchfile_complete_files() {
-  if [[ "$BCTILS_CURRENT_WORD" =~ ^"." ]]; then
+  if [[ "$shcomp2_CURRENT_WORD" =~ ^"." ]]; then
     # complete files starting in current directory
     compopt -o nospace
-    mapfile -t COMPREPLY < <(compgen -o filenames -f -- "$BCTILS_CURRENT_WORD")
+    mapfile -t COMPREPLY < <(compgen -o filenames -f -- "$shcomp2_CURRENT_WORD")
     if [[ "${#COMPREPLY[@]}" == 1 ]]; then
       if [[ -d "${COMPREPLY[0]}" ]]; then
         COMPREPLY[0]="${COMPREPLY[0]}/"
@@ -69,11 +69,11 @@ __watchfile_complete_files() {
         compopt +o nospace # turn back on spaces
       fi
     fi
-  elif [[ ! "$BCTILS_CURRENT_WORD" =~ ^"-" ]]; then
+  elif [[ ! "$shcomp2_CURRENT_WORD" =~ ^"-" ]]; then
     # complete files in default dir
     compopt -o nospace
-    readarray -td ":" file_matches < <(find "$FWATCH_DIR" -name "$BCTILS_CURRENT_WORD*" -type f -printf "%f:")
-    mapfile -t COMPREPLY < <(compgen -W "${file_matches[*]}" -- "$BCTILS_CURRENT_WORD")
+    readarray -td ":" file_matches < <(find "$FWATCH_DIR" -name "$shcomp2_CURRENT_WORD*" -type f -printf "%f:")
+    mapfile -t COMPREPLY < <(compgen -W "${file_matches[*]}" -- "$shcomp2_CURRENT_WORD")
     if [[ "${#COMPREPLY[@]}" == 1 ]]; then
       if [[ -f "${FWATCH_DIR}/${COMPREPLY[0]}" ]]; then
         compopt +o nospace # turn back on spaces

@@ -2,14 +2,14 @@
 # last_modified_ms: {{.ModifiedTimeMs}}
 # todo: add version metadata
 # todo: add gotype to the top without effecting it somehow
-{{/*gotype: bctils/pkg/lib.templateData*/}}
+{{/*gotype: shcomp2/pkg/lib.templateData*/}}
 
 log () { echo -e "[$(date '+%T.%3N')] $*" >> ~/bashscript.log; }
 log_everything () { if [[ "{{.Cli.CliNameClean}}" == "$1" ]]; then exec >> ~/bashscript.log; exec 2>&1; set -x; fi; }
 
 {{.OperationsComment}}
 
-__bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
+__shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   local -A subparsers={{ BashAssocNoQuote .ParserNameMap 2 }}
 
   # options
@@ -108,7 +108,7 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
       "closure")
         local option_closure="${option_complete_data[__value__,$option_name]}"
         COMPREPLY=()
-        declare -g BCTILS_CURRENT_WORD="$current_word"
+        declare -g shcomp2_CURRENT_WORD="$current_word"
         "$option_closure"
         option_choices="${COMPREPLY[*]}"
         COMPREPLY=()
@@ -128,7 +128,7 @@ __bctils_v2_autocomplete_{{.Cli.CliNameClean}} () {
       "closure")
         local -n positional_closure="_positional_${parser}_${carg_index}_closure"
         COMPREPLY=()
-        declare -g BCTILS_CURRENT_WORD="$current_word"
+        declare -g shcomp2_CURRENT_WORD="$current_word"
         "$positional_closure"
         choices_all+=("${COMPREPLY[@]}")
         COMPREPLY=()
@@ -155,8 +155,8 @@ source "{{.}}"
 {{end}}
 
 {{if .Cli.Config.AutogenReloadTriggers}}
-__bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} () {
-  bctils -reload-check <<'OEF'
+__shcomp2_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} () {
+  shcomp2 -reload-check <<'OEF'
     {{ .StringsJoin .Cli.OperationsReloadConfig 4 }}
 OEF
   local return_code="$?"
@@ -164,10 +164,10 @@ OEF
     source "{{.Cli.Config.Outfile}}" # source self to reload changes
   fi
 
-  __bctils_v2_autocomplete_{{.Cli.CliNameClean}}
+  __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}}
 }
-complete -F __bctils_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} -o nospace "{{ .Cli.CliName }}"
+complete -F __shcomp2_v2_autocomplete_autogen_reloader_{{.Cli.CliNameClean}} -o nospace "{{ .Cli.CliName }}"
 {{else}}
 # todo: add closure validation when sourcing
-complete -F __bctils_v2_autocomplete_{{ .Cli.CliNameClean }} -o nospace "{{ .Cli.CliName }}"
+complete -F __shcomp2_v2_autocomplete_{{ .Cli.CliNameClean }} -o nospace "{{ .Cli.CliName }}"
 {{end}}

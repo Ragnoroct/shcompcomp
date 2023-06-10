@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"bctils/pkg/lib"
 	"bytes"
 	"fmt"
 	"github.com/rs/zerolog/log"
@@ -15,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"shcomp2/pkg/lib"
 	"strings"
 	"sync"
 	"testing"
@@ -191,11 +191,12 @@ func ExpectCompleteFile(t *testing.T, shellFile string, cmdStr string, expected 
 		_ = os.WriteFile(compilePath, content, 0644)
 
 		t.Fatalf(
-			"\n%s\n"+
+			"\n"+
+				"compiled: %s\n"+
 				"     cmd: '%s'\n"+
 				"  actual: '%s'\n"+
 				"expected: '%s'\n",
-			"./"+strings.TrimPrefix(compilePath, pwd+"/")+":0:",
+			testname,
 			cmdStr,
 			actual,
 			expected,
@@ -272,7 +273,7 @@ func startProcess(shellCode string, filename string) (chan string, chan string, 
 			# allows compopt calls without giving the cmdname arg
 			# compopt +o nospace instead of compopt +o nospace mycommand
 			compopt () {
-				builtin compopt "$@" "$__bctilstest_compopt_current_cmd"
+				builtin compopt "$@" "$__shcomp2test_compopt_current_cmd"
 			}
 			
 			IFS=', ' read -r -a comp_words <<<"$input_line"
@@ -285,9 +286,9 @@ func startProcess(shellCode string, filename string) (chan string, chan string, 
 			COMP_POINT="$(("${#input_line}" + 0))"
 
 			complete_func="$(complete -p "$cmd_name" | awk '{print $(NF-1)}')"
-			__bctilstest_compopt_current_cmd="$cmd_name"
+			__shcomp2test_compopt_current_cmd="$cmd_name"
 			"$complete_func" &>/tmp/bashcompletils.out
-			__bctilstest_compopt_current_cmd=""
+			__shcomp2test_compopt_current_cmd=""
 			unset compopt
 
 			printf '%s\n' "${COMPREPLY[*]}"

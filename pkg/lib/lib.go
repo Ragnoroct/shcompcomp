@@ -479,7 +479,7 @@ func CompileCli(cli Cli) (string, error) {
 	})
 	Check(os.WriteFile("/home/willy/.dotfiles/bashcompletils/compile/complete-template.txt", completeTemplateNew, 0644))
 
-	templateParsed, err := template.New("bctil-compile").Funcs(
+	templateParsed, err := template.New("shcomp2-compile").Funcs(
 		template.FuncMap{
 			"StringsJoin":      strings.Join,
 			"BashArray":        BashArray,
@@ -493,7 +493,7 @@ func CompileCli(cli Cli) (string, error) {
 	var buffer bytes.Buffer
 	err = templateParsed.Execute(&buffer, data)
 	if err != nil {
-		re := regexp.MustCompile(`bctil-compile:(\d+):(\d+)`)
+		re := regexp.MustCompile(`shcomp2-compile:(\d+):(\d+)`)
 		matches := re.FindStringSubmatch(err.Error())
 		col, _ := strconv.Atoi(matches[2])
 		return "", fmt.Errorf(

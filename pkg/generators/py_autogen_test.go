@@ -1,12 +1,12 @@
 package generators
 
 import (
-	"bctils/pkg/lib"
-	"bctils/pkg/testutil"
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/suite"
 	"path"
+	"shcomp2/pkg/lib"
+	"shcomp2/pkg/testutil"
 	"testing"
 )
 
@@ -247,7 +247,7 @@ func (suite *Suite) FutureTests() {
 	suite.Run("adding to .bashrc and removing it still adds time and is accumalative", func() {})
 	suite.Run("positionals without hints are recognized countwise", func() {})
 	suite.Run("py_autogen detect disabling --help/-h", func() {})
-	suite.Run("bctils_autogen specify out file", func() {})
+	suite.Run("shcomp2_autogen specify out file", func() {})
 	suite.Run("exclusive options --vanilla --chocolate", func() {})
 	suite.Run("complete option value like --opt=value", func() {})
 	suite.Run("add flag to auto add = if only one arg option left and it requires an argument", func() {})
@@ -263,7 +263,7 @@ func (suite *Suite) FutureTests() {
 	suite.Run("benchmark testing compilation", func() {})
 	suite.Run("benchmark testing compilation caching", func() {})
 	suite.Run("benchmark testing autogeneration of python script", func() {})
-	suite.Run("benchmark source bctils lib", func() {})
+	suite.Run("benchmark source shcomp2 lib", func() {})
 	suite.Run("benchmark source compiled scripts", func() {})
 	suite.Run("use -- in util scripts to separate arguments from options", func() {})
 	suite.Run("allow single -longopt like golang", func() {})
@@ -280,7 +280,7 @@ func (suite *Suite) FutureTests() {
 	suite.Run("provide custom functions -F to autocomplete subparsers option values", func() {})
 	suite.Run("nargs with known number", func() {})
 	suite.Run("nargs with unknown number", func() {})
-	suite.Run("invalid usages of bctil utility functions", func() {})
+	suite.Run("invalid usages of shcomp2 utility functions", func() {})
 	suite.Run("stateless in environment after compilation. no leftover variables.", func() {})
 	suite.Run("zero logging when in production mode", func() {})
 	suite.Run("doesnt share variable state between different cli_name", func() {})

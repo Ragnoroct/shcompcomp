@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bctils/pkg/lib"
-	"bctils/pkg/testutil"
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
@@ -12,6 +10,8 @@ import (
 	"io"
 	"os"
 	"path"
+	"shcomp2/pkg/lib"
+	"shcomp2/pkg/testutil"
 	"testing"
 	"time"
 )
