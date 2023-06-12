@@ -29,11 +29,12 @@ const (
 
 type CliParserName string
 type CliParser struct {
-	parserName    CliParserName
-	subparsers    map[CliParserName]bool
-	subparsersSeq []string
-	positionals   []CliPositional
-	optionals     []CliOptional
+	parserName      CliParserName
+	subparsers      map[CliParserName]bool
+	subparsersSeq   []string
+	positionals     []CliPositional
+	optionals       []CliOptional
+	positionalCount int
 }
 
 type CliParsers struct {
@@ -44,12 +45,20 @@ type CliParsers struct {
 func (parsers *CliParsers) addPositional(pos CliPositional) {
 	name := pos.parser
 	if parser, ok := parsers.parserMap[name]; ok {
-		pos.Number = len(parser.positionals) + 1
+		pos.Number = parser.positionalCount
+		parser.positionalCount += 1
+		if pos.NArgs.Max != math.Inf(+1) && pos.NArgs.Max > 0 {
+			parser.positionalCount += int(pos.NArgs.Max) - 1
+		}
 		parser.positionals = append(parser.positionals, pos)
 		parsers.parserMap[name] = parser
 	} else {
 		parser = parsers.parser(name)
-		pos.Number = len(parser.positionals) + 1
+		pos.Number = parser.positionalCount
+		parser.positionalCount += 1
+		if pos.NArgs.Max != math.Inf(+1) && pos.NArgs.Max > 0 {
+			parser.positionalCount += int(pos.NArgs.Max) - 1
+		}
 		parser.positionals = append(parser.positionals, pos)
 		parsers.parserMap[name] = parser
 		parsers.parserSeq = append(parsers.parserSeq, name)
@@ -105,9 +114,10 @@ func (parsers *CliParsers) parser(name CliParserName) CliParser {
 		return parser
 	} else {
 		parser = CliParser{
-			parserName:  name,
-			positionals: []CliPositional{},
-			optionals:   []CliOptional{},
+			parserName:      name,
+			positionals:     []CliPositional{},
+			optionals:       []CliOptional{},
+			positionalCount: 1,
 		}
 		parsers.parserMap[name] = parser
 		parsers.parserSeq = append(parsers.parserSeq, name)
@@ -171,8 +181,9 @@ func (parser CliParser) Subparsers() []string {
 // * => {0,inf}
 // 3 => {3,3}
 type CliNargs struct {
-	Min float64
-	Max float64
+	Min    float64
+	Max    float64
+	Unique bool
 }
 
 type CliPositional struct {
@@ -314,13 +325,23 @@ func (d templateData) NargsSwitch() string {
 			if pos.NArgs != (CliNargs{}) {
 				foundNargs = true
 				for i := 0; i < int(pos.NArgs.Max); i++ {
-					out.WriteString(fmt.Sprintf("  %d) real_carg_index=\"%d\" ;;\n", pos.Number+i, pos.Number))
+					if pos.NArgs.Unique {
+						out.WriteString(fmt.Sprintf("  %d) \n", pos.Number+i))
+						out.WriteString(fmt.Sprintf("      real_carg_index=\"%d\"\n", pos.Number))
+						out.WriteString(fmt.Sprintf("      if [[ -n \"$word\" ]]; then\n"))
+						out.WriteString(fmt.Sprintf("        _positional_%s_%d_used[\"$word\"]=1\n", parser.NameClean(), pos.Number))
+						out.WriteString(fmt.Sprintf("      fi\n"))
+						out.WriteString(fmt.Sprintf("      ;;\n"))
+					} else {
+						out.WriteString(fmt.Sprintf("  %d) real_carg_index=\"%d\" ;;\n", pos.Number+i, pos.Number))
+					}
 				}
 			} else {
 				out.WriteString(fmt.Sprintf("  %d) real_carg_index=\"%d\" ;;\n", pos.Number, pos.Number))
 			}
 		}
 	}
+	out.WriteString("  *) real_carg_index=\"$carg_index\" ;;\n")
 	out.WriteString(`esac`)
 
 	if foundNargs {
@@ -434,27 +455,32 @@ func ParseOperations(operationsStr string) Cli {
 					arg.CompleteType = CompleteTypeClosure
 					arg.ClosureName = value
 				}
+				if _, ok := tryOption(word, "--nargs-unique"); ok {
+					arg.NArgs.Unique = true
+				}
 				if value, ok := tryOption(word, "--nargs"); ok {
 					if value == "*" {
-						arg.NArgs = CliNargs{Min: 0, Max: math.Inf(+1)}
+						arg.NArgs.Min = 0
+						arg.NArgs.Max = math.Inf(+1)
 					} else if value == "+" {
-						arg.NArgs = CliNargs{Min: 1, Max: math.Inf(+1)}
+						arg.NArgs.Min = 1
+						arg.NArgs.Max = math.Inf(+1)
 					} else if value == "?" {
 						arg.NArgs = CliNargs{Min: 0, Max: 1}
+						arg.NArgs.Min = 1
+						arg.NArgs.Max = math.Inf(+1)
 					} else if matches := regexp.MustCompile(`\{(\d+),(\d+|inf)}`).FindStringSubmatch(value); matches != nil {
-						nargs := CliNargs{}
 						min := matches[1]
 						max := matches[2]
 						minInt, _ := strconv.Atoi(min)
-						nargs.Min = float64(minInt)
+						arg.NArgs.Min = float64(minInt)
 						if max == "inf" {
-							nargs.Max = math.Inf(+1)
+							arg.NArgs.Max = math.Inf(+1)
 						} else {
 							maxInt, _ := strconv.Atoi(max)
-							nargs.Max = float64(maxInt)
+							arg.NArgs.Max = float64(maxInt)
 						}
-						arg.NArgs = nargs
-						if nargs == (CliNargs{}) {
+						if arg.NArgs.Min == 0 && arg.NArgs.Max == 0 {
 							panic("cannot use min 0 and max 0 for nargs")
 						}
 					} else if regexp.MustCompile(`\d+`).MatchString(value) {
@@ -662,7 +688,7 @@ func CompileCli(cli Cli) (string, error) {
 }
 
 func tryOption(word string, name string) (string, bool) {
-	if strings.HasPrefix(word, name) {
+	if word == name || strings.HasPrefix(word, name+"=") {
 		_, optionValue, valid := strings.Cut(word, "=")
 		if valid {
 			return unquote(optionValue), true

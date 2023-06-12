@@ -208,9 +208,25 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli one ", "one two three")
 		suite.RequireComplete(shell, "testcli one two ", "one two three")
 	})
-	suite.Run("nargs with range", func() {})
-	suite.Run("nargs with non-unique choices", func() {})
-	suite.Run("nargs with unique choices", func() {})
+	suite.Run("nargs with range", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --choices="one two" --nargs={1,2}
+			pos --choices="three"
+		`)
+		suite.RequireComplete(shell, "testcli ", "one two")
+		suite.RequireComplete(shell, "testcli one ", "one two")
+		suite.RequireComplete(shell, "testcli one two ", "three")
+	})
+	suite.Run("nargs with unique choices", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --choices="one two three" --nargs=3 --nargs-unique
+		`)
+		suite.RequireComplete(shell, "testcli ", "one two three")
+		suite.RequireComplete(shell, "testcli one ", "two three")
+		suite.RequireComplete(shell, "testcli one two ", "three")
+	})
 	suite.Run("nargs with zero to unlimited", func() {})
 	suite.Run("nargs with 1 to unlimited", func() {})
 }

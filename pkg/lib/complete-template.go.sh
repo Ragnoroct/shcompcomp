@@ -26,8 +26,8 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   local _positional_{{$parser.NameClean}}_1_choices={{- BashArray $parser.Subparsers 2 }}
   {{- else }}
   {{- range $pos := $parser.Positionals -}}
-  {{- if and (ne $pos.NArgs.Min 0.0) (ne $pos.NArgs.Max 0.0) }}
-  local _positional_{{$parser.NameClean}}_{{$pos.Number}}_data={{ BashAssocQuote $parser.PositionalsData 2 }}
+  {{- if and (ne $pos.NArgs.Max 0.0) (eq $pos.NArgs.Unique true) }}
+  local -A _positional_{{$parser.NameClean}}_{{$pos.Number}}_used
   {{- end}}
   {{- if eq $pos.CompleteType "choices" }}
   local _positional_{{$parser.NameClean}}_{{$pos.Number}}_type="choices"
@@ -132,7 +132,16 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     case "$positional_complete_type" in
       "choices")
         local -n positional_choices="_positional_${parser}_${carg_index}_choices"
-        choices_all+=("${positional_choices[@]}")
+        local -n positional_used="_positional_${parser}_${carg_index}_used"
+        if [[ "${#positional_used[@]}" -gt 0 ]]; then
+          for choice in "${positional_choices[@]}"; do
+            if [[ -z "${positional_used[$choice]}" ]]; then
+              choices_all+=("$choice")
+            fi
+          done
+        else
+          choices_all+=("${positional_choices[@]}")
+        fi
         ;;
       "closure")
         local -n positional_closure="_positional_${parser}_${carg_index}_closure"

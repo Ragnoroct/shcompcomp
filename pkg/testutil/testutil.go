@@ -253,7 +253,7 @@ func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected st
 		if h, ok := t.(interface{ Helper() }); ok {
 			h.Helper()
 		}
-		require.Equalf(t, expected, actual, "completion does not match\n"+compilePath+":0")
+		require.Equalf(t, expected, actual, "completion does not match\n"+path.Base(compilePath))
 	}
 }
 
