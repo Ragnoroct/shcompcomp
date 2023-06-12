@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
+	"math"
 	"os"
 	"path"
 	"regexp"
@@ -146,8 +147,32 @@ func (parser CliParser) OptionalsData() map[string]string {
 	return assoc
 }
 
+func (parser CliParser) PositionalsData() map[string]string {
+	assoc := make(map[string]string, 0)
+	for _, positional := range parser.positionals {
+		if positional.NArgs != (CliNargs{}) {
+			num := fmt.Sprintf("%d", positional.Number)
+			assoc["__nargs_min__,"+num] = fmt.Sprintf("%.0f", positional.NArgs.Min)
+			assoc["__nargs_max__,"+num] = fmt.Sprintf("%.0f", positional.NArgs.Max)
+		}
+	}
+
+	return assoc
+}
+
 func (parser CliParser) Subparsers() []string {
 	return parser.subparsersSeq
+}
+
+// CliNargs
+// {min,max}
+// ? => {0,1}
+// + => {1,inf}
+// * => {0,inf}
+// 3 => {3,3}
+type CliNargs struct {
+	Min float64
+	Max float64
 }
 
 type CliPositional struct {
@@ -156,6 +181,7 @@ type CliPositional struct {
 	CompleteType string
 	ClosureName  string
 	Choices      []string
+	NArgs        CliNargs
 }
 
 type CliOptional struct {
@@ -267,6 +293,43 @@ func (d templateData) StringsJoin(values []string, indent int) string {
 	return strings.Join(values, "\n"+indentStr)
 }
 
+func (d templateData) NargsSwitchHas() bool {
+	for _, parser := range d.Parsers() {
+		for _, pos := range parser.positionals {
+			if pos.NArgs != (CliNargs{}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (d templateData) NargsSwitch() string {
+	var out strings.Builder
+
+	out.WriteString(`case "$carg_index" in` + "\n")
+	foundNargs := false
+	for _, parser := range d.Parsers() {
+		for _, pos := range parser.positionals {
+			if pos.NArgs != (CliNargs{}) {
+				foundNargs = true
+				for i := 0; i < int(pos.NArgs.Max); i++ {
+					out.WriteString(fmt.Sprintf("  %d) real_carg_index=\"%d\" ;;\n", pos.Number+i, pos.Number))
+				}
+			} else {
+				out.WriteString(fmt.Sprintf("  %d) real_carg_index=\"%d\" ;;\n", pos.Number, pos.Number))
+			}
+		}
+	}
+	out.WriteString(`esac`)
+
+	if foundNargs {
+		return out.String()
+	} else {
+		return ""
+	}
+}
+
 func ParseOperationsStdin(stdin io.Reader) string {
 	content, err := io.ReadAll(stdin)
 	Check(err)
@@ -370,6 +433,37 @@ func ParseOperations(operationsStr string) Cli {
 				if value, ok := tryOption(word, "--closure"); ok {
 					arg.CompleteType = CompleteTypeClosure
 					arg.ClosureName = value
+				}
+				if value, ok := tryOption(word, "--nargs"); ok {
+					if value == "*" {
+						arg.NArgs = CliNargs{Min: 0, Max: math.Inf(+1)}
+					} else if value == "+" {
+						arg.NArgs = CliNargs{Min: 1, Max: math.Inf(+1)}
+					} else if value == "?" {
+						arg.NArgs = CliNargs{Min: 0, Max: 1}
+					} else if matches := regexp.MustCompile(`\{(\d+),(\d+|inf)}`).FindStringSubmatch(value); matches != nil {
+						nargs := CliNargs{}
+						min := matches[1]
+						max := matches[2]
+						minInt, _ := strconv.Atoi(min)
+						nargs.Min = float64(minInt)
+						if max == "inf" {
+							nargs.Max = math.Inf(+1)
+						} else {
+							maxInt, _ := strconv.Atoi(max)
+							nargs.Max = float64(maxInt)
+						}
+						arg.NArgs = nargs
+						if nargs == (CliNargs{}) {
+							panic("cannot use min 0 and max 0 for nargs")
+						}
+					} else if regexp.MustCompile(`\d+`).MatchString(value) {
+						staticInt, _ := strconv.Atoi(value)
+						arg.NArgs = CliNargs{Min: float64(staticInt), Max: float64(staticInt)}
+					} else {
+						panic("unable to parse nargs " + value)
+					}
+					log.Printf("nargs: %v", arg.NArgs)
 				}
 			}
 
@@ -477,17 +571,72 @@ func CompileCli(cli Cli) (string, error) {
 		replaceStr := matchStart + matchStartWhitespace + matchAction + nextLine
 		return []byte(replaceStr)
 	})
-	Check(os.WriteFile("/home/willy/.dotfiles/bashcompletils/compile/complete-template.txt", completeTemplateNew, 0644))
 
-	templateParsed, err := template.New("shcomp2-compile").Funcs(
-		template.FuncMap{
-			"StringsJoin":      strings.Join,
-			"BashArray":        BashArray,
-			"BashAssocQuote":   BashAssocQuote,
-			"BashAssocNoQuote": BashAssocNoQuote,
-			"BashAssoc":        BashAssoc,
+	// dedent `{{ something | indent num }}`
+	completeTemplateNew = regexp.MustCompile(`(?m:^\s+(.*\| indent \d+ }}))`).ReplaceAll(completeTemplateNew, []byte("$1"))
+
+	t := template.New("shcomp2-compile")
+	var funcMap = template.FuncMap{
+		"StringsJoin":      strings.Join,
+		"BashArray":        BashArray,
+		"BashAssocQuote":   BashAssocQuote,
+		"BashAssocNoQuote": BashAssocNoQuote,
+		"BashAssoc":        BashAssoc,
+		"loop": func(from any, to any) <-chan int {
+			ch := make(chan int)
+			var fromint int
+			var toint int
+			switch v := from.(type) {
+			case int:
+				fromint = v
+			case float64:
+				fromint = int(v)
+			}
+			switch v := to.(type) {
+			case int:
+				toint = v
+			case float64:
+				toint = int(v)
+			}
+			go func() {
+				for i := fromint; i <= toint; i++ {
+					ch <- i
+				}
+				close(ch)
+			}()
+			return ch
 		},
-	).Parse(string(completeTemplateNew))
+	}
+	funcMap["include"] = func(name string, data ...any) (string, error) {
+		buf := bytes.NewBuffer(nil)
+		if err := t.ExecuteTemplate(buf, name, data); err != nil {
+			return "", err
+		}
+		return buf.String(), nil
+	}
+	funcMap["indent"] = func(indent int, data ...any) string {
+		switch v := data[0].(type) {
+		case string:
+			var indentStr = strings.Repeat(" ", indent)
+			var indented strings.Builder
+			var indentNext = false
+			indented.WriteString(indentStr)
+			for _, r := range v {
+				if r == '\n' {
+					indentNext = true
+				} else if indentNext {
+					indented.WriteString(indentStr)
+					indentNext = false
+				}
+
+				indented.WriteRune(r)
+			}
+			return indented.String()
+		default:
+			panic("unknown data type")
+		}
+	}
+	templateParsed, err := t.Funcs(funcMap).Parse(string(completeTemplateNew))
 	Check(err)
 
 	var buffer bytes.Buffer

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 var mutex sync.Mutex
@@ -148,9 +149,21 @@ func Completer(completeShell string) *CompleterProcess {
 func (p *CompleterProcess) Complete(cmdStr string) string {
 	mutex.Lock()
 	defer mutex.Unlock()
+	var out string
+	var chanTimeout = make(chan bool)
+
+	go func() {
+		time.Sleep(time.Second)
+		chanTimeout <- true
+	}()
 
 	_, _ = io.WriteString(*p.stdin, cmdStr+"\n")
-	out := <-p.chanOut
+	select {
+	case out = <-p.chanOut:
+	case <-chanTimeout:
+		panic("error : timeout on waiting for complete")
+	}
+
 	outStderr := <-p.chanStderr
 	if outStderr != "" {
 		lines := strings.Split(outStderr, "\n")
@@ -205,9 +218,7 @@ func ExpectCompleteFile(t *testing.T, shellFile string, cmdStr string, expected 
 }
 
 func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected string) {
-	completer := Completer(shell)
-	actual := strings.TrimRight(completer.Complete(cmdStr), "\n \t")
-	if actual != expected {
+	writeCompiled := func() string {
 		testname := "unknowntestname"
 		if n, ok := t.(interface {
 			Name() string
@@ -221,7 +232,24 @@ func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected st
 		testname += ".bash"
 		compilePath := path.Join(basepath, "../../compile/"+testname)
 		_ = os.WriteFile(compilePath, []byte(shell), 0644)
+		return compilePath
+	}
 
+	defer func() {
+		if r := recover(); r != nil {
+			writeCompiled()
+			panic(r)
+		}
+	}()
+
+	completer := Completer(shell)
+	actual := completer.Complete(cmdStr)
+	if err := recover(); err != nil {
+		actual = "err: timeout"
+	}
+	actual = strings.TrimRight(actual, "\n \t")
+	if actual != expected {
+		compilePath := writeCompiled()
 		if h, ok := t.(interface{ Helper() }); ok {
 			h.Helper()
 		}

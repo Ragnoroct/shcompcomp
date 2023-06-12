@@ -19,13 +19,16 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   {{ end }}
 
   # arguments
-  {{range $parser := .Parsers -}}
+  {{- range $parser := .Parsers -}}
   {{- if $parser.Subparsers }}
   {{/* subparsers are always the first and only positional */}}
   local _positional_{{$parser.NameClean}}_1_type="choices"
   local _positional_{{$parser.NameClean}}_1_choices={{- BashArray $parser.Subparsers 2 }}
   {{- else }}
   {{- range $pos := $parser.Positionals -}}
+  {{- if and (ne $pos.NArgs.Min 0.0) (ne $pos.NArgs.Max 0.0) }}
+  local _positional_{{$parser.NameClean}}_{{$pos.Number}}_data={{ BashAssocQuote $parser.PositionalsData 2 }}
+  {{- end}}
   {{- if eq $pos.CompleteType "choices" }}
   local _positional_{{$parser.NameClean}}_{{$pos.Number}}_type="choices"
   local _positional_{{$parser.NameClean}}_{{$pos.Number}}_choices={{- BashArray $pos.Choices 2 }}
@@ -59,6 +62,7 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     # argument
     if [[ ! "$word" =~ ^'-' && "$i" -le "$cword_index" ]]; then
       carg_index=$((carg_index+1))
+{{ .NargsSwitch | indent 6 }}
     fi
 
     # option
@@ -88,6 +92,11 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   if [[ "$carg_index" == 0 ]]; then
     carg_index=1  # todo: this is a hack. figure out how to properly get positional number based on line
   fi
+
+  {{if .NargsSwitchHas }}
+  {{ .NargsSwitch | indent 2 }}
+  carg_index="$real_carg_index"
+  {{end}}
 
   if [[ -z "$current_parser" ]]; then
     parser="{{.DefaultParserClean}}"

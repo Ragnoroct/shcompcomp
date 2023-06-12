@@ -183,18 +183,44 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli --key ", "val1 val2")
 		suite.RequireComplete(shell, "testcli --tree ", "c8 c9 c10")
 	})
+
+	suite.Run("order of operations is always the same", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			opt "--key"
+			opt "--tree"
+		`)
+		shell2 := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			opt "--tree"
+			opt "--key"
+		`)
+		suite.RequireComplete(shell, "testcli ", "--key --tree")
+		suite.RequireComplete(shell2, "testcli ", "--tree --key")
+	})
+
+	suite.Run("nargs with known number non-unique", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --choices="one two three" --nargs=3
+		`)
+		suite.RequireComplete(shell, "testcli ", "one two three")
+		suite.RequireComplete(shell, "testcli one ", "one two three")
+		suite.RequireComplete(shell, "testcli one two ", "one two three")
+	})
+	suite.Run("nargs with range", func() {})
+	suite.Run("nargs with non-unique choices", func() {})
+	suite.Run("nargs with unique choices", func() {})
+	suite.Run("nargs with zero to unlimited", func() {})
+	suite.Run("nargs with 1 to unlimited", func() {})
 }
 
 func (suite *MainTestSuite) FutureTests() {
-	suite.Run("subparsers cmds are always the first positional and cannot clash", func() {})
-	suite.Run("error handling", func() {})
-	suite.Run("compile to target file", func() {})
 	suite.Run("sort results by pos -> --help option", func() {})
-	suite.Run("order of operations is always the same", func() {})
-	suite.Run("options with values", func() {})
-	suite.Run("options with values", func() {})
+	suite.Run("options with values but prefer equals sign", func() {})
 	suite.Run("allow closures through comments", func() {})
-	suite.Run("work with multiple files with same parser", func() {})
+	suite.Run("autgenpy follow imports to other files", func() {})
+	suite.Run("subparsers cmds are always the first positional and cannot clash", func() {})
 	suite.Run("custom log", func() {})
 	suite.Run("source ~/.bashrc is FAST with MANY 'autogen calls'", func() {})
 	suite.Run("cache all compiles", func() {})
@@ -233,8 +259,6 @@ func (suite *MainTestSuite) FutureTests() {
 	suite.Run("provide custom functions -F to autocomplete subparsers arguments and options", func() {})
 	suite.Run("provide custom functions -F to autocomplete option values", func() {})
 	suite.Run("provide custom functions -F to autocomplete subparsers option values", func() {})
-	suite.Run("nargs with known number", func() {})
-	suite.Run("nargs with unknown number", func() {})
 	suite.Run("invalid usages of shcomp2 utility functions", func() {})
 	suite.Run("stateless in environment after compilation. no leftover variables.", func() {})
 	suite.Run("zero logging when in production mode", func() {})
@@ -258,6 +282,7 @@ func (suite *MainTestSuite) FutureTests() {
 	suite.Run("project is licensed", func() {})
 	suite.Run("order of options added and argument choices is order shown", func() {})
 	suite.Run("all error messages match current script name", func() {})
+	suite.Run("error handling", func() {})
 }
 
 func (suite *MainTestSuite) TestMainToStdout() {
