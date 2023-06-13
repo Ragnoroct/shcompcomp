@@ -257,7 +257,50 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli many ", "two")
 		suite.RequireComplete(shell, "testcli many many asd a a f dsaf asdd asdf saf asdf ", "many")
 	})
+	suite.Run("nargs opt simple range", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			opt -v --nargs=3
+		`)
+		suite.RequireComplete(shell, "testcli ", "-v")
+		suite.RequireComplete(shell, "testcli -v ", "-v")
+		suite.RequireComplete(shell, "testcli -v -v ", "-v")
+		suite.RequireComplete(shell, "testcli -v -v -v ", "")
+	})
+	suite.Run("nargs opt many", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			opt -v --nargs=*
+		`)
+		suite.RequireComplete(shell, "testcli ", "-v")
+		suite.RequireComplete(shell, "testcli -v ", "-v")
+		suite.RequireComplete(shell, "testcli -v -v ", "-v")
+		suite.RequireComplete(shell, "testcli -v -v -v asd asdas dasf asdas asdf s ", "-v")
+	})
+	suite.Run("nargs opt value simple range", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			opt --key --choices="value" --nargs=2
+		`)
+		suite.RequireComplete(shell, "testcli ", "--key")
+		suite.RequireComplete(shell, "testcli --key ", "value")
+		suite.RequireComplete(shell, "testcli --key value ", "--key")
+		suite.RequireComplete(shell, "testcli --key value --key ", "value")
+		suite.RequireComplete(shell, "testcli --key value --key value ", "")
+	})
+	suite.Run("nargs opt value many", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			opt --key --choices="value" --nargs=*
+		`)
+		suite.RequireComplete(shell, "testcli ", "--key")
+		suite.RequireComplete(shell, "testcli --key ", "value")
+		suite.RequireComplete(shell, "testcli --key value ", "--key")
+		suite.RequireComplete(shell, "testcli --key value --key ", "value")
+		suite.RequireComplete(shell, "testcli --key value --key value asdf asdf sdfdsfd asddf faa ", "--key")
+	})
 	suite.Run("nargs error handling invalid inputs", func() {})
+	suite.Run("combining single opt flags -v -v -v into -vvv", func() {})
 }
 
 func (suite *MainTestSuite) FutureTests() {

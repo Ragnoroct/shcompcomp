@@ -52,7 +52,7 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   local carg_index=0
   local i=0 # skip first word
   local current_parser=""
-  local current_parser_clean=""
+  local current_parser_clean="baseparser"
   local completing_option_val=0
   while true; do
     i=$((i+1))
@@ -62,13 +62,27 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     # argument
     if [[ ! "$word" =~ ^'-' && "$i" -le "$cword_index" ]]; then
       carg_index=$((carg_index+1))
-{{ .NargsSwitch | indent 6 }}
+      {{ .NargsSwitch | indent 6 }}
     fi
 
     # option
     if [[ "$word" =~ ^'-' && "$i" -le "$cword_index" ]]; then
+      local reached_max=1
+      local -n option_data="_option_${current_parser_clean}_data"
+      if [[ -v "option_data[__narg_max__,$word]" ]]; then
+        if [[ "${option_data["__narg_max__,$word"]}" == "inf" ]]; then
+          reached_max=0
+        else
+          option_data["__narg_count__,$word"]=$((option_data["__narg_count__,$word"]+1))
+          if [[ "${option_data["__narg_count__,$word"]}" -lt "${option_data["__narg_max__,$word"]}" ]]; then
+            reached_max=0
+          fi
+        fi
+      fi
       if ((i<=cword_index)); then
-        used_options["$word"]=1
+        if [[ "$reached_max" == 1 ]]; then
+          used_options["$word"]=1
+        fi
       fi
     fi
 

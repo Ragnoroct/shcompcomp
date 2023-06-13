@@ -152,6 +152,14 @@ func (parser CliParser) OptionalsData() map[string]string {
 				assoc["__value__,"+optional.name] = optional.closureName
 			}
 		}
+		if optional.NArgs.Max > 0.0 {
+			if optional.NArgs.Max == math.Inf(+1) {
+				assoc["__narg_max__,"+optional.name] = "inf"
+			} else {
+				assoc["__narg_max__,"+optional.name] = fmt.Sprintf("%.0f", optional.NArgs.Max)
+			}
+			assoc["__narg_count__,"+optional.name] = "0"
+		}
 	}
 
 	return assoc
@@ -202,6 +210,7 @@ type CliOptional struct {
 	completeType string
 	closureName  string
 	choices      []string
+	NArgs        CliNargs
 }
 
 type ReloadTrigger struct {
@@ -464,40 +473,14 @@ func ParseOperations(operationsStr string) Cli {
 					arg.ClosureName = value
 				}
 				if _, ok := tryOption(word, "--nargs-unique"); ok {
-					arg.NArgs.Unique = true
+					nargs := arg.NArgs
+					nargs.Unique = true
+					arg.NArgs = nargs
 				}
 				if value, ok := tryOption(word, "--nargs"); ok {
-					if value == "*" {
-						arg.NArgs.Min = 0
-						arg.NArgs.Max = math.Inf(+1)
-					} else if value == "+" {
-						arg.NArgs.Min = 1
-						arg.NArgs.Max = math.Inf(+1)
-					} else if value == "?" {
-						arg.NArgs = CliNargs{Min: 0, Max: 1}
-						arg.NArgs.Min = 1
-						arg.NArgs.Max = math.Inf(+1)
-					} else if matches := regexp.MustCompile(`\{(\d+),(\d+|inf)}`).FindStringSubmatch(value); matches != nil {
-						min := matches[1]
-						max := matches[2]
-						minInt, _ := strconv.Atoi(min)
-						arg.NArgs.Min = float64(minInt)
-						if max == "inf" {
-							arg.NArgs.Max = math.Inf(+1)
-						} else {
-							maxInt, _ := strconv.Atoi(max)
-							arg.NArgs.Max = float64(maxInt)
-						}
-						if arg.NArgs.Min == 0 && arg.NArgs.Max == 0 {
-							panic("cannot use min 0 and max 0 for nargs")
-						}
-					} else if regexp.MustCompile(`\d+`).MatchString(value) {
-						staticInt, _ := strconv.Atoi(value)
-						arg.NArgs = CliNargs{Min: float64(staticInt), Max: float64(staticInt)}
-					} else {
-						panic("unable to parse nargs " + value)
-					}
-					log.Printf("nargs: %v", arg.NArgs)
+					nargs := arg.NArgs
+					nargs = parseNargs(value, nargs)
+					arg.NArgs = nargs
 				}
 			}
 
@@ -525,6 +508,11 @@ func ParseOperations(operationsStr string) Cli {
 				if value, ok := tryOption(word, "--closure"); ok {
 					opt.completeType = CompleteTypeClosure
 					opt.closureName = value
+				}
+				if value, ok := tryOption(word, "--nargs"); ok {
+					nargs := opt.NArgs
+					nargs = parseNargs(value, nargs)
+					opt.NArgs = nargs
 				}
 			}
 
@@ -567,6 +555,40 @@ func ParseOperations(operationsStr string) Cli {
 	cli.Parsers = &parsers
 	cli.Operations = operationLinesParsed
 	return cli
+}
+
+func parseNargs(value string, nargs CliNargs) CliNargs {
+	if value == "*" {
+		nargs.Min = 0
+		nargs.Max = math.Inf(+1)
+	} else if value == "+" {
+		nargs.Min = 1
+		nargs.Max = math.Inf(+1)
+	} else if value == "?" {
+		nargs.Min = 1
+		nargs.Max = 1
+	} else if matches := regexp.MustCompile(`\{(\d+),(\d+|inf)}`).FindStringSubmatch(value); matches != nil {
+		min := matches[1]
+		max := matches[2]
+		minInt, _ := strconv.Atoi(min)
+		nargs.Min = float64(minInt)
+		if max == "inf" {
+			nargs.Max = math.Inf(+1)
+		} else {
+			maxInt, _ := strconv.Atoi(max)
+			nargs.Max = float64(maxInt)
+		}
+		if nargs.Min == 0 && nargs.Max == 0 {
+			panic("cannot use min 0 and max 0 for nargs")
+		}
+	} else if regexp.MustCompile(`\d+`).MatchString(value) {
+		staticInt, _ := strconv.Atoi(value)
+		nargs.Min = float64(staticInt)
+		nargs.Max = float64(staticInt)
+	} else {
+		panic("unable to parse nargs " + value)
+	}
+	return nargs
 }
 
 func CommitCli(cli Cli, compiled string, stdout io.Writer) error {

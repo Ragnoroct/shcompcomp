@@ -233,3 +233,5 @@ func (suite *Suite) TestSrcFromCmd() {
 
 	suite.RequireComplete(shell, "testcli ", "--help")
 }
+
+func (suite *Suite) TestNargs() {}
