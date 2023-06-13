@@ -199,6 +199,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell2, "testcli ", "--tree --key")
 	})
 
+	// todo: figure out if min range is ever useful
 	suite.Run("nargs with known number non-unique", func() {
 		shell := testutil.ParseOperationsStdinHelper(`
 			cfg cli_name=testcli
@@ -227,8 +228,36 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli one ", "two three")
 		suite.RequireComplete(shell, "testcli one two ", "three")
 	})
-	suite.Run("nargs with zero to unlimited", func() {})
-	suite.Run("nargs with 1 to unlimited", func() {})
+	suite.Run("nargs with zero to unlimited", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --choices="many" --nargs={0,inf}
+		`)
+		suite.RequireComplete(shell, "testcli ", "many")
+		suite.RequireComplete(shell, "testcli many ", "many")
+		suite.RequireComplete(shell, "testcli many many asd a a f dsaf asdd asdf saf asdf ", "many")
+	})
+	suite.Run("nargs unlimited shorthand", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --choices="many" --nargs=*
+		`)
+		suite.RequireComplete(shell, "testcli ", "many")
+		suite.RequireComplete(shell, "testcli many ", "many")
+		suite.RequireComplete(shell, "testcli many many asd a a f dsaf asdd asdf saf asdf ", "many")
+	})
+	suite.Run("nargs mixing unlimited with known", func() {
+		shell := testutil.ParseOperationsStdinHelper(`
+			cfg cli_name=testcli
+			pos --choices="one"
+			pos --choices="two"
+			pos --choices="many" --nargs={0,inf}
+		`)
+		suite.RequireComplete(shell, "testcli ", "one")
+		suite.RequireComplete(shell, "testcli many ", "two")
+		suite.RequireComplete(shell, "testcli many many asd a a f dsaf asdd asdf saf asdf ", "many")
+	})
+	suite.Run("nargs error handling invalid inputs", func() {})
 }
 
 func (suite *MainTestSuite) FutureTests() {

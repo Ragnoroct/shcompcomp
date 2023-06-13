@@ -29,10 +29,10 @@ test test_name="":
     profile_start_tests="$EPOCHREALTIME"
     "${test_call[@]}" 2>&1 \
       | clean_stack.pl \
+      | tee /tmp/bashcompletils-test-results \
       | sed s/"FAIL"/"$red&$reset"/i \
       | sed s/"PASS\|ok"/"$green&$reset"/i \
       | sed s/"WARNING"/"$yellow&$reset"/i \
-      | tee /tmp/bashcompletils-test-results \
       ;
     status_test="${PIPESTATUS[0]}"
     status_build="${PIPESTATUS[1]}"
@@ -43,7 +43,7 @@ test test_name="":
       log "[tests] compile error"
       printf "\e]0;%s %s %3dms\007" "$title" "cerr" "$profile_tests"
     elif [[ "$status_test" != 0 ]]; then
-      log "[tests] fail ${profile_tests}ms\n$(cat "/tmp/bashcompletils-test-results")"
+      log "[tests] fail tests ${profile_tests}ms\n$(cat "/tmp/bashcompletils-test-results" | grep '\--- FAIL:')"
       printf "\e]0;%s %s %3dms\007" "$title" "fail" "$profile_tests"
     else
       log "[tests] pass ${profile_tests}ms"

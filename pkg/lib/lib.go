@@ -320,20 +320,26 @@ func (d templateData) NargsSwitch() string {
 
 	out.WriteString(`case "$carg_index" in` + "\n")
 	foundNargs := false
+	infinity := false
 	for _, parser := range d.Parsers() {
 		for _, pos := range parser.positionals {
 			if pos.NArgs != (CliNargs{}) {
 				foundNargs = true
-				for i := 0; i < int(pos.NArgs.Max); i++ {
-					if pos.NArgs.Unique {
-						out.WriteString(fmt.Sprintf("  %d) \n", pos.Number+i))
-						out.WriteString(fmt.Sprintf("      real_carg_index=\"%d\"\n", pos.Number))
-						out.WriteString(fmt.Sprintf("      if [[ -n \"$word\" ]]; then\n"))
-						out.WriteString(fmt.Sprintf("        _positional_%s_%d_used[\"$word\"]=1\n", parser.NameClean(), pos.Number))
-						out.WriteString(fmt.Sprintf("      fi\n"))
-						out.WriteString(fmt.Sprintf("      ;;\n"))
-					} else {
-						out.WriteString(fmt.Sprintf("  %d) real_carg_index=\"%d\" ;;\n", pos.Number+i, pos.Number))
+				if pos.NArgs.Max == math.Inf(+1) {
+					infinity = true
+					out.WriteString(fmt.Sprintf("  *) real_carg_index=\"%d\" ;;\n", pos.Number))
+				} else {
+					for i := 0; i < int(pos.NArgs.Max); i++ {
+						if pos.NArgs.Unique {
+							out.WriteString(fmt.Sprintf("  %d) \n", pos.Number+i))
+							out.WriteString(fmt.Sprintf("      real_carg_index=\"%d\"\n", pos.Number))
+							out.WriteString(fmt.Sprintf("      if [[ -n \"$word\" ]]; then\n"))
+							out.WriteString(fmt.Sprintf("        _positional_%s_%d_used[\"$word\"]=1\n", parser.NameClean(), pos.Number))
+							out.WriteString(fmt.Sprintf("      fi\n"))
+							out.WriteString(fmt.Sprintf("      ;;\n"))
+						} else {
+							out.WriteString(fmt.Sprintf("  %d) real_carg_index=\"%d\" ;;\n", pos.Number+i, pos.Number))
+						}
 					}
 				}
 			} else {
@@ -341,7 +347,9 @@ func (d templateData) NargsSwitch() string {
 			}
 		}
 	}
-	out.WriteString("  *) real_carg_index=\"$carg_index\" ;;\n")
+	if !infinity {
+		out.WriteString("  *) real_carg_index=\"$carg_index\" ;;\n")
+	}
 	out.WriteString(`esac`)
 
 	if foundNargs {
@@ -438,7 +446,7 @@ func ParseOperations(operationsStr string) Cli {
 
 			// -p=parser
 			if strings.HasPrefix(words[1], "-p=") {
-				if value, ok := tryOption(words[1], "-"); ok {
+				if value, ok := tryOption(words[1], "-p"); ok {
 					arg.parser = CliParserName(value)
 					words = append(words[:1], words[1+1:]...)
 				}
@@ -499,7 +507,7 @@ func ParseOperations(operationsStr string) Cli {
 
 			// -p=parser can come before name
 			if strings.HasPrefix(words[1], "-p=") {
-				if value, ok := tryOption(words[1], "-"); ok {
+				if value, ok := tryOption(words[1], "-p"); ok {
 					opt.parser = CliParserName(value)
 					words = append(words[:1], words[1+1:]...)
 				}
@@ -529,7 +537,7 @@ func ParseOperations(operationsStr string) Cli {
 
 			// -p=parser can come before name
 			if strings.HasPrefix(words[1], "-p=") {
-				if value, ok := tryOption(words[1], "-"); ok {
+				if value, ok := tryOption(words[1], "-p"); ok {
 					parentParserName = value
 					words = append(words[:1], words[1+1:]...)
 				}

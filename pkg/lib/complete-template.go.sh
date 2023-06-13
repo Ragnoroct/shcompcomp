@@ -94,6 +94,7 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   fi
 
   {{if .NargsSwitchHas }}
+  # todo: remove need for this here
   {{ .NargsSwitch | indent 2 }}
   carg_index="$real_carg_index"
   {{end}}
