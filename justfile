@@ -25,10 +25,14 @@ test test_name="":
     fi
     echo "${test_call[*]}"
 
+    clean_stack_cmd="cat"
+    if command -v perl &> /dev/null; then
+      clean_stack_cmd="./scripts/clean_stack.pl"
+    fi
 
     profile_start_tests="$EPOCHREALTIME"
     "${test_call[@]}" 2>&1 \
-      | clean_stack.pl \
+      | "$clean_stack_cmd" \
       | tee /tmp/bashcompletils-test-results \
       | sed s/"FAIL"/"$red&$reset"/i \
       | sed s/"PASS\|ok"/"$green&$reset"/i \
@@ -123,9 +127,7 @@ build-watch:
     }
 
     inotify_action "dummy.go"
-    inotifywait -q -m -r -e close_write,create,delete "$proj_dir" \
-    --exclude "$proj_dir\/((compile|build|scratch.*|archive|\..*).*|.*(\.lock|~|\.log))$" \
-    | inotifywait_debounce 100 | \
+    inotifywait -q -m -r -e close_write,create,delete "$proj_dir" | \
     while read -r dir events filename; do
       inotify_action "$dir$filename"
     done

@@ -304,6 +304,8 @@ func (suite *MainTestSuite) TestCases() {
 }
 
 func (suite *MainTestSuite) FutureTests() {
+	suite.Run("option exlusivity -h or --help not both", func() {})
+
 	suite.Run("sort results by pos -> --help option", func() {})
 	suite.Run("options with values but prefer equals sign", func() {})
 	suite.Run("allow closures through comments", func() {})
