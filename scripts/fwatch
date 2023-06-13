@@ -32,15 +32,22 @@ __watchfile_main() {
     watch_type=" (head)"
   fi
 
+  bat_cmd=(
+    "$script_dir/../cmd/shellcheck_cat/shellcheck_cat.go"
+    "$file_resolved"
+    --paging=never
+    --color=always
+  )
+
   __watchfile_inotifywait_action() {
     if [[ "$head_file" == 1 ]]; then
       page_size="$(($(tput lines) - 3))"
-      clear && bat "$file_resolved" --paging=never --color=always | head -n "$page_size"
+      clear && "${bat_cmd[@]}" | head -n "$page_size"
     elif [[ "$tail_file" == 1 ]]; then
       page_size="$(($(tput lines) - 5))"
-      clear && bat "$file_resolved" --paging=never --color=always | less -FX
+      clear && "${bat_cmd[@]}" | less -FX
     else
-      clear && bat "$file_resolved" --paging=never --color=always
+      clear && "${bat_cmd[@]}"
     fi
     echo -n "watching: $file$watch_type"
   }
