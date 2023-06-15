@@ -10,27 +10,21 @@ import (
 	"shcomp2/pkg/lib"
 )
 
-type arrayFlags []string
-
-func (i *arrayFlags) String() string {
-	return ""
-}
-
-func (i *arrayFlags) Set(value string) error {
-	*i = append(*i, value)
-	return nil
-}
-
-type cliFlags struct {
-	autogenLang            string
-	autogenOutfile         string
-	autogenSrcFile         string
-	autogenExtraWatchFiles arrayFlags
-}
-
 type Options struct {
 	args        []string
 	checkReload bool
+}
+
+func main() {
+	logCleanup := lib.SetupLogger()
+	defer logCleanup()
+
+	options := Options{}
+	flag.BoolVar(&options.checkReload, "reload-check", false, "")
+	flag.Parse()
+	options.args = flag.Args()
+	exitCode := entry(os.Stdin, os.Stdout, os.Stderr, options)
+	os.Exit(exitCode)
 }
 
 func entry(stdin io.Reader, stdout io.Writer, stderr io.Writer, options Options) (code int) {
@@ -51,18 +45,6 @@ func entry(stdin io.Reader, stdout io.Writer, stderr io.Writer, options Options)
 	}
 }
 
-func main() {
-	logCleanup := lib.SetupLogger()
-	defer logCleanup()
-
-	options := Options{}
-	flag.BoolVar(&options.checkReload, "reload-check", false, "")
-	flag.Parse()
-	options.args = flag.Args()
-	exitCode := entry(os.Stdin, os.Stdout, os.Stderr, options)
-	os.Exit(exitCode)
-}
-
 func HandleCompileShell(infile string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	if infile == "-" {
 		content, err := io.ReadAll(stdin)
@@ -80,7 +62,7 @@ func HandleCompileShell(infile string, stdin io.Reader, stdout io.Writer, stderr
 		}
 
 		if cli.Config.AutogenLang == "py" {
-			cli = generators.GeneratePythonOperations2(cli)
+			cli = generators.GeneratePythonOperations(cli)
 		}
 
 		compiledShell, err := lib.CompileCli(cli)
@@ -98,9 +80,4 @@ func HandleCompileShell(infile string, stdin io.Reader, stdout io.Writer, stderr
 		_, _ = fmt.Fprintf(stderr, "must provide - as first argument\n")
 		return errors.New("infile as other files not implemented yet")
 	}
-}
-
-func exit(code int, msg any) {
-	_, _ = fmt.Fprintln(os.Stderr, msg)
-	os.Exit(code)
 }

@@ -27,7 +27,7 @@ func (suite *Suite) AutogenParse(src string) string {
 		cfg outfile=-
 	`, filename))
 	check(err)
-	cli = GeneratePythonOperations2(cli)
+	cli = GeneratePythonOperations(cli)
 	shell, err := lib.CompileCli(cli)
 	if err != nil {
 		panic(err)
@@ -40,7 +40,7 @@ func (suite *Suite) AutogenParseCfg(cfg string, values ...any) string {
 	cfg = fmt.Sprintf(cfg, values...)
 	cli, err := lib.ParseOperations(cfg)
 	check(err)
-	cli = GeneratePythonOperations2(cli)
+	cli = GeneratePythonOperations(cli)
 	shell, err := lib.CompileCli(cli)
 	if err != nil {
 		panic(err)
