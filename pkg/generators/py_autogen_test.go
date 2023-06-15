@@ -20,12 +20,13 @@ type Suite struct {
 
 func (suite *Suite) AutogenParse(src string) string {
 	filename := suite.CreateFile("file.py", src)
-	cli := lib.ParseOperations(fmt.Sprintf(`
+	cli, err := lib.ParseOperations(fmt.Sprintf(`
 		cfg cli_name=testcli
 		cfg autogen_lang=py
 		cfg autogen_file=%s
 		cfg outfile=-
 	`, filename))
+	check(err)
 	cli = GeneratePythonOperations2(cli)
 	shell, err := lib.CompileCli(cli)
 	if err != nil {
@@ -37,7 +38,8 @@ func (suite *Suite) AutogenParse(src string) string {
 func (suite *Suite) AutogenParseCfg(cfg string, values ...any) string {
 	var nullbuffer bytes.Buffer
 	cfg = fmt.Sprintf(cfg, values...)
-	cli := lib.ParseOperations(cfg)
+	cli, err := lib.ParseOperations(cfg)
+	check(err)
 	cli = GeneratePythonOperations2(cli)
 	shell, err := lib.CompileCli(cli)
 	if err != nil {

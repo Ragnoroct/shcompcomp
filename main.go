@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -44,6 +43,7 @@ func entry(stdin io.Reader, stdout io.Writer, stderr io.Writer, options Options)
 	} else {
 		err := HandleCompileShell(options.args[0], stdin, stdout, stderr)
 		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 			return 1
 		} else {
 			return 0
@@ -55,52 +55,12 @@ func main() {
 	logCleanup := lib.SetupLogger()
 	defer logCleanup()
 
-	isLegacy := len(os.Args) > 1 && os.Args[1] == "-legacy"
-
-	if !isLegacy {
-		options := Options{}
-		flag.BoolVar(&options.checkReload, "reload-check", false, "")
-		flag.Parse()
-		options.args = flag.Args()
-		exitCode := entry(os.Stdin, os.Stdout, os.Stderr, options)
-		os.Exit(exitCode)
-	} else {
-		// legacy: allow tests to pass while reworking
-		os.Args = append(os.Args[0:1], os.Args[2:]...)
-		var flags = cliFlags{}
-		flag.StringVar(&flags.autogenSrcFile, "autogen-src", "", "file to generate completion for")
-		flag.StringVar(&flags.autogenLang, "autogen-lang", "", "language of file")
-		flag.StringVar(&flags.autogenOutfile, "autogen-outfile", "", "outfile location so it can source itself")
-		flag.Var(&flags.autogenExtraWatchFiles, "autogen-extra-watch", "extra files to trigger reloads")
-		flag.Parse()
-		cliName := flag.Arg(0)
-
-		var operationsStr string
-		if flags.autogenLang == "py" {
-			argsVerbatim := flag.Arg(1)
-			operationsStr = generators.GeneratePythonOperations(flags.autogenSrcFile, argsVerbatim, flags.autogenOutfile, flags.autogenExtraWatchFiles)
-		} else if flags.autogenLang == "" {
-			operationsStr = ""
-			scanner := bufio.NewScanner(os.Stdin)
-			for scanner.Scan() {
-				argLine := scanner.Text()
-				operationsStr += argLine + "\n"
-			}
-		} else {
-			fmt.Printf("error: unknown lang '%s' for autogen", flags.autogenLang)
-			os.Exit(1)
-		}
-
-		operationsStr = "cfg cli_name=" + cliName + "\n" + operationsStr
-		cli := lib.ParseOperations(operationsStr)
-		compiledShell, err := lib.CompileCli(cli)
-		if err != nil {
-			exit(1, err)
-		}
-
-		_, err = os.Stdout.WriteString(compiledShell)
-		lib.Check(err)
-	}
+	options := Options{}
+	flag.BoolVar(&options.checkReload, "reload-check", false, "")
+	flag.Parse()
+	options.args = flag.Args()
+	exitCode := entry(os.Stdin, os.Stdout, os.Stderr, options)
+	os.Exit(exitCode)
 }
 
 func HandleCompileShell(infile string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
@@ -114,7 +74,10 @@ func HandleCompileShell(infile string, stdin io.Reader, stdout io.Writer, stderr
 			return errors.New("stdin is empty but infile is - ")
 		}
 
-		cli := lib.ParseOperations(string(content))
+		cli, err := lib.ParseOperations(string(content))
+		if err != nil {
+			return err
+		}
 
 		if cli.Config.AutogenLang == "py" {
 			cli = generators.GeneratePythonOperations2(cli)

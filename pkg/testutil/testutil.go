@@ -180,14 +180,29 @@ func (p *CompleterProcess) Complete(cmdStr string) string {
 	return strings.TrimRight(out, " \t\n")
 }
 
-func ParseOperationsStdinHelper(operations string, values ...any) string {
+func ParseOperations(operations string, values ...any) string {
 	var stdin bytes.Buffer
 	operations = fmt.Sprintf(operations, values...)
 	operations = lib.Dedent(operations)
 	stdin.Write([]byte(operations))
-	return lib.ParseOperationsStdin(&stdin)
+	shell, err := lib.ParseOperationsStdin(&stdin)
+	check(err)
+	return shell
 }
 
+func ParseOperationsErr(operations string, values ...any) (string, error) {
+	var stdin bytes.Buffer
+	operations = fmt.Sprintf(operations, values...)
+	operations = lib.Dedent(operations)
+	stdin.Write([]byte(operations))
+	shell, err := lib.ParseOperationsStdin(&stdin)
+	if err != nil {
+		return "", err
+	}
+	return shell, nil
+}
+
+// todo: combine with ExpectComplete
 func ExpectCompleteFile(t *testing.T, shellFile string, cmdStr string, expected string) {
 	t.Helper()
 	completer := CompleterFile(shellFile)
@@ -250,10 +265,18 @@ func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected st
 	actual = strings.TrimRight(actual, "\n \t")
 	if actual != expected {
 		compilePath := writeCompiled()
+		home, _ := os.UserHomeDir()
+		compilePath = strings.Replace(compilePath, home, "~", 1)
+
+		pathPrefix := os.Getenv("CUST_PROTOCOL_PREFIX")
+		if pathPrefix != "" {
+			compilePath = pathPrefix + "/" + strings.TrimLeft(compilePath, "/")
+		}
+
 		if h, ok := t.(interface{ Helper() }); ok {
 			h.Helper()
 		}
-		require.Equalf(t, expected, actual, "completion does not match\n"+path.Base(compilePath))
+		require.Equalf(t, expected, actual, "completion does not match\n"+compilePath)
 	}
 }
 

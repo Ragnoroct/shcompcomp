@@ -256,10 +256,11 @@ func (c Cli) OperationsReloadConfig() []string {
 }
 
 type Cli struct {
-	cliName    string
-	Config     CliConfig
-	Parsers    *CliParsers
-	Operations []string
+	cliName               string
+	Config                CliConfig
+	Parsers               *CliParsers
+	Operations            []string
+	prevNArgIndeterminant bool
 }
 
 type Argument struct {
@@ -368,16 +369,54 @@ func (d templateData) NargsSwitch() string {
 	}
 }
 
-func ParseOperationsStdin(stdin io.Reader) string {
+func ParseOperationsStdin(stdin io.Reader) (string, error) {
 	content, err := io.ReadAll(stdin)
 	Check(err)
-	cli := ParseOperations(string(content))
+	cli, err := ParseOperations(string(content))
+	if err != nil {
+		return "", err
+	}
 	completeCode, err := CompileCli(cli)
 	Check(err)
-	return completeCode
+	return completeCode, nil
 }
 
-func ParseOperations(operationsStr string) Cli {
+func parseNargs(value string, nargs CliNargs) CliNargs {
+	if value == "*" {
+		nargs.Min = 0
+		nargs.Max = math.Inf(+1)
+	} else if value == "+" {
+		nargs.Min = 1
+		nargs.Max = math.Inf(+1)
+	} else if value == "?" {
+		nargs.Min = 1
+		nargs.Max = 1
+	} else if matches := regexp.MustCompile(`\{(\d+),(\d+|inf)}`).FindStringSubmatch(value); matches != nil {
+		min := matches[1]
+		max := matches[2]
+		minInt, _ := strconv.Atoi(min)
+		nargs.Min = float64(minInt)
+		if max == "inf" {
+			nargs.Max = math.Inf(+1)
+		} else {
+			maxInt, _ := strconv.Atoi(max)
+			nargs.Max = float64(maxInt)
+		}
+		if nargs.Min == 0 && nargs.Max == 0 {
+			panic("cannot use min 0 and max 0 for nargs")
+		}
+	} else if regexp.MustCompile(`\d+`).MatchString(value) {
+		staticInt, _ := strconv.Atoi(value)
+		nargs.Min = float64(staticInt)
+		nargs.Max = float64(staticInt)
+	} else {
+		panic("unable to parse nargs " + value)
+	}
+
+	return nargs
+}
+
+func ParseOperations(operationsStr string) (Cli, error) {
 	var parsers = CliParsers{
 		parserMap: map[CliParserName]CliParser{},
 		parserSeq: []CliParserName{},
@@ -386,6 +425,7 @@ func ParseOperations(operationsStr string) Cli {
 	cli := Cli{
 		Config: CliConfig{Outfile: "-"},
 	}
+	cli.prevNArgIndeterminant = false
 	parsers.parser(DefaultParser)
 
 	var operationLinesParsed []string
@@ -453,8 +493,12 @@ func ParseOperations(operationsStr string) Cli {
 		case "pos":
 			arg := CliPositional{}
 
+			if cli.prevNArgIndeterminant {
+				return Cli{}, fmt.Errorf("cannot have a positional come after a indeterminant narg positional")
+			}
+
 			// -p=parser
-			if strings.HasPrefix(words[1], "-p=") {
+			if len(words) > 1 && strings.HasPrefix(words[1], "-p=") {
 				if value, ok := tryOption(words[1], "-p"); ok {
 					arg.parser = CliParserName(value)
 					words = append(words[:1], words[1+1:]...)
@@ -481,6 +525,9 @@ func ParseOperations(operationsStr string) Cli {
 					nargs := arg.NArgs
 					nargs = parseNargs(value, nargs)
 					arg.NArgs = nargs
+					if nargs.Min != nargs.Max || nargs.Max == math.Inf(+1) {
+						cli.prevNArgIndeterminant = true
+					}
 				}
 			}
 
@@ -554,41 +601,7 @@ func ParseOperations(operationsStr string) Cli {
 
 	cli.Parsers = &parsers
 	cli.Operations = operationLinesParsed
-	return cli
-}
-
-func parseNargs(value string, nargs CliNargs) CliNargs {
-	if value == "*" {
-		nargs.Min = 0
-		nargs.Max = math.Inf(+1)
-	} else if value == "+" {
-		nargs.Min = 1
-		nargs.Max = math.Inf(+1)
-	} else if value == "?" {
-		nargs.Min = 1
-		nargs.Max = 1
-	} else if matches := regexp.MustCompile(`\{(\d+),(\d+|inf)}`).FindStringSubmatch(value); matches != nil {
-		min := matches[1]
-		max := matches[2]
-		minInt, _ := strconv.Atoi(min)
-		nargs.Min = float64(minInt)
-		if max == "inf" {
-			nargs.Max = math.Inf(+1)
-		} else {
-			maxInt, _ := strconv.Atoi(max)
-			nargs.Max = float64(maxInt)
-		}
-		if nargs.Min == 0 && nargs.Max == 0 {
-			panic("cannot use min 0 and max 0 for nargs")
-		}
-	} else if regexp.MustCompile(`\d+`).MatchString(value) {
-		staticInt, _ := strconv.Atoi(value)
-		nargs.Min = float64(staticInt)
-		nargs.Max = float64(staticInt)
-	} else {
-		panic("unable to parse nargs " + value)
-	}
-	return nargs
+	return cli, nil
 }
 
 func CommitCli(cli Cli, compiled string, stdout io.Writer) error {

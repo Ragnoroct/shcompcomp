@@ -66,7 +66,7 @@ func (suite *MainTestSuite) CreateFile(filename string, contents string) (filepa
 
 func (suite *MainTestSuite) TestCases() {
 	suite.Run("simple", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=bobman
 			opt "-h"
 			opt "--help"
@@ -77,7 +77,7 @@ func (suite *MainTestSuite) TestCases() {
 	})
 
 	suite.Run("positionals with choices", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="c1 c2 c3"
 			pos --choices="c4 c5 c6"
@@ -90,7 +90,7 @@ func (suite *MainTestSuite) TestCases() {
 	})
 
 	suite.Run("positionals with choices and optionals", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="c1 c2 c3"
 			opt "-h"
@@ -105,7 +105,7 @@ func (suite *MainTestSuite) TestCases() {
 	})
 
 	suite.Run("simple subparsers", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt "-h"
 			opt "--help"
@@ -118,7 +118,7 @@ func (suite *MainTestSuite) TestCases() {
 	})
 
 	suite.Run("nested subparsers", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt -p="sub-b" 				--help-b
 			opt -p="sub-b.sub-c" 		--help-c
@@ -131,7 +131,7 @@ func (suite *MainTestSuite) TestCases() {
 	})
 
 	suite.Run("allow closure for positionals", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --closure="__testcli_pos_1_completer"
 			opt --awesome
@@ -151,13 +151,13 @@ func (suite *MainTestSuite) TestCases() {
 				mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
 			}
 		`)
-		shellUnsourced := testutil.ParseOperationsStdinHelper(`
+		shellUnsourced := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --closure="__testcli_pos_1_completer"
 			opt --awesome
 			opt --print
 		`)
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			cfg include_source="%s"
 			pos --closure="__testcli_pos_1_completer"
@@ -169,7 +169,7 @@ func (suite *MainTestSuite) TestCases() {
 	})
 
 	suite.Run("simple options with arguments like --opt val", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt "--key" --choices="val1 val2"
 			opt "--tree" --closure="__testcli_completer"
@@ -185,12 +185,12 @@ func (suite *MainTestSuite) TestCases() {
 	})
 
 	suite.Run("order of operations is always the same", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt "--key"
 			opt "--tree"
 		`)
-		shell2 := testutil.ParseOperationsStdinHelper(`
+		shell2 := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt "--tree"
 			opt "--key"
@@ -201,7 +201,7 @@ func (suite *MainTestSuite) TestCases() {
 
 	// todo: figure out if min range is ever useful
 	suite.Run("nargs with known number non-unique", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="one two three" --nargs=3
 		`)
@@ -210,17 +210,15 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli one two ", "one two three")
 	})
 	suite.Run("nargs with range", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="one two" --nargs={1,2}
-			pos --choices="three"
 		`)
 		suite.RequireComplete(shell, "testcli ", "one two")
 		suite.RequireComplete(shell, "testcli one ", "one two")
-		suite.RequireComplete(shell, "testcli one two ", "three")
 	})
 	suite.Run("nargs with unique choices", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="one two three" --nargs=3 --nargs-unique
 		`)
@@ -229,7 +227,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli one two ", "three")
 	})
 	suite.Run("nargs with zero to unlimited", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="many" --nargs={0,inf}
 		`)
@@ -238,7 +236,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli many many asd a a f dsaf asdd asdf saf asdf ", "many")
 	})
 	suite.Run("nargs unlimited shorthand", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="many" --nargs=*
 		`)
@@ -247,7 +245,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli many many asd a a f dsaf asdd asdf saf asdf ", "many")
 	})
 	suite.Run("nargs mixing unlimited with known", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			pos --choices="one"
 			pos --choices="two"
@@ -258,7 +256,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli many many asd a a f dsaf asdd asdf saf asdf ", "many")
 	})
 	suite.Run("nargs opt simple range", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt -v --nargs=3
 		`)
@@ -268,7 +266,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli -v -v -v ", "")
 	})
 	suite.Run("nargs opt many", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt -v --nargs=*
 		`)
@@ -278,7 +276,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli -v -v -v asd asdas dasf asdas asdf s ", "-v")
 	})
 	suite.Run("nargs opt value simple range", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt --key --choices="value" --nargs=2
 		`)
@@ -289,7 +287,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli --key value --key value ", "")
 	})
 	suite.Run("nargs opt value many", func() {
-		shell := testutil.ParseOperationsStdinHelper(`
+		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
 			opt --key --choices="value" --nargs=*
 		`)
@@ -299,7 +297,14 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli --key value --key ", "value")
 		suite.RequireComplete(shell, "testcli --key value --key value asdf asdf sdfdsfd asddf faa ", "--key")
 	})
-	suite.Run("nargs error handling invalid inputs", func() {})
+	suite.Run("nargs error handling invalid inputs", func() {
+		_, err := testutil.ParseOperationsErr(`
+			cfg cli_name=testcli
+			pos --nargs=*
+			pos
+		`)
+		suite.Assert().EqualError(err, "cannot have a positional come after a indeterminant narg positional")
+	})
 	suite.Run("combining single opt flags -v -v -v into -vvv", func() {})
 }
 
@@ -468,6 +473,16 @@ func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
 	suite.Equal(hashAfterNoReload, hashAfterReload)
 }
 
+func (suite *MainTestSuite) TestMainHandlesError() {
+	result := executeEntry(lib.Dedent(`
+		cfg cli_name=testcli
+		pos --nargs=*
+		pos
+	`))
+	suite.Require().Equal(1, result.code)
+	suite.Require().Equal("error: cannot have a positional come after a indeterminant narg positional\n", result.stderr)
+}
+
 func mainWithStdout(stdin string) (stdout string) {
 	var stdoutWriter bytes.Buffer
 	var stderrWriter bytes.Buffer
@@ -475,4 +490,23 @@ func mainWithStdout(stdin string) (stdout string) {
 	stdinReader.WriteString(stdin)
 	entry(&stdinReader, &stdoutWriter, &stderrWriter, Options{checkReload: false, args: []string{"-"}})
 	return stdoutWriter.String()
+}
+
+type resultMain struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+func executeEntry(stdin string) resultMain {
+	var stdoutWriter bytes.Buffer
+	var stderrWriter bytes.Buffer
+	var stdinReader bytes.Buffer
+	stdinReader.WriteString(stdin)
+	exitCode := entry(&stdinReader, &stdoutWriter, &stderrWriter, Options{checkReload: false, args: []string{"-"}})
+	return resultMain{
+		code:   exitCode,
+		stdout: stdoutWriter.String(),
+		stderr: stderrWriter.String(),
+	}
 }

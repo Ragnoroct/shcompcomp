@@ -17,6 +17,7 @@ import (
 )
 
 var lang *sitter.Language
+var check = lib.Check
 
 func GeneratePythonOperations2(cli lib.Cli) lib.Cli {
 	var operations = cli.Operations
@@ -45,14 +46,16 @@ func GeneratePythonOperations2(cli lib.Cli) lib.Cli {
 	}
 	operations = newOperations
 
-	cli = lib.ParseOperations(strings.Join(operations, "\n"))
+	cli, err := lib.ParseOperations(strings.Join(operations, "\n"))
+	check(err)
 	return cli
 }
 
 func CheckReload(stdin io.Reader, stdout io.Writer, stderr io.Writer) bool {
 	content, err := io.ReadAll(stdin)
-	lib.Check(err)
-	cli := lib.ParseOperations(string(content))
+	check(err)
+	cli, err := lib.ParseOperations(string(content))
+	check(err)
 	shouldReload := false
 	for _, triggerFile := range cli.Config.AutogenReloadTriggers {
 		fileInfo, _ := os.Stat(triggerFile.File)
@@ -405,12 +408,6 @@ func getParserVarName(root *sitter.Node, src []byte) string {
 	}
 
 	return name
-}
-
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
 }
 
 func unquote(str string) string {
