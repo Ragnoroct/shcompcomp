@@ -297,15 +297,113 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli --key value --key ", "value")
 		suite.RequireComplete(shell, "testcli --key value --key value asdf asdf sdfdsfd asddf faa ", "--key")
 	})
-	suite.Run("nargs error handling invalid inputs", func() {
-		_, err := testutil.ParseOperationsErr(`
-			cfg cli_name=testcli
-			pos --nargs=*
-			pos
-		`)
-		suite.Assert().EqualError(err, "cannot have a positional come after a indeterminant narg positional")
-	})
+
 	suite.Run("combining single opt flags -v -v -v into -vvv", func() {})
+}
+
+func (suite *MainTestSuite) TestNargsErrorHandling() {
+	var errIndeterm = "cannot have a positional come after a indeterminant narg positional"
+
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{
+			"pos after *",
+			`
+				cfg cli_name=testcli
+				pos --nargs=*
+				pos
+				`,
+			errIndeterm,
+		},
+		{
+			"pos after range",
+			`
+				cfg cli_name=testcli
+				pos --nargs={0,1}
+				pos
+				`,
+			errIndeterm,
+		},
+		{
+			"opt with narg after range okay",
+			`
+				cfg cli_name=testcli
+				pos --nargs={0,1}
+				opt -v --nargs=*
+				`,
+			"",
+		},
+		{
+			"invalid syntax missing end }",
+			`
+				cfg cli_name=testcli
+				pos --nargs={0,1
+				`,
+			"unable to parse nargs {0,1",
+		},
+		{
+			"invalid syntax",
+			`
+				cfg cli_name=testcli
+				pos --nargs=bob
+				`,
+			"unable to parse nargs bob",
+		},
+		{
+			"negative numbers",
+			`
+				cfg cli_name=testcli
+				pos --nargs=-1
+				`,
+			"cannot have negative values for nargs -1",
+		},
+		{
+			"negative numbers",
+			`
+				cfg cli_name=testcli
+				pos --nargs={1,-3}
+				`,
+			"cannot have negative values for nargs {1,-3}",
+		},
+		{
+			"max zero",
+			`
+				cfg cli_name=testcli
+				pos --nargs={0,0}
+				`,
+			"cannot use 0 for narg max {0,0}",
+		},
+		{
+			"min greater than max",
+			`
+				cfg cli_name=testcli
+				pos --nargs={2,1}
+				`,
+			"cannot have a min greater than max narg {2,1}",
+		},
+		{
+			"min greater than max",
+			`
+				cfg cli_name=testcli
+				pos --nargs={inf,1}
+				`,
+			"cannot have a min greater than max narg {inf,1}",
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			_, err := testutil.ParseOperationsErr(tt.input)
+			if tt.expect != "" || err != nil {
+				suite.Assert().EqualError(err, tt.expect)
+			} else {
+				suite.Assert().Equal(nil, err)
+			}
+		})
+	}
 }
 
 func (suite *MainTestSuite) FutureTests() {

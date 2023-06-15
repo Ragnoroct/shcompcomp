@@ -52,7 +52,6 @@ func (suite *LibTestSuite) CreateFile(filename string, contents string) (filepat
 }
 
 func (suite *LibTestSuite) TestParseWords() {
-
 	tests := []struct {
 		name   string
 		input  string

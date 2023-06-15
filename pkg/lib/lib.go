@@ -381,8 +381,8 @@ func ParseOperationsStdin(stdin io.Reader) (string, error) {
 	return completeCode, nil
 }
 
-func parseNargs(value string, nargs CliNargs) CliNargs {
-	if value == "*" {
+func parseNargs(value string, nargs CliNargs) (CliNargs, error) {
+	if value == "*" || value == "inf" {
 		nargs.Min = 0
 		nargs.Max = math.Inf(+1)
 	} else if value == "+" {
@@ -391,29 +391,42 @@ func parseNargs(value string, nargs CliNargs) CliNargs {
 	} else if value == "?" {
 		nargs.Min = 1
 		nargs.Max = 1
-	} else if matches := regexp.MustCompile(`\{(\d+),(\d+|inf)}`).FindStringSubmatch(value); matches != nil {
+	} else if matches := regexp.MustCompile(`\{(-?\d+|inf),(-?\d+|inf)}`).FindStringSubmatch(value); matches != nil {
 		min := matches[1]
 		max := matches[2]
-		minInt, _ := strconv.Atoi(min)
-		nargs.Min = float64(minInt)
+		if min == "inf" {
+			nargs.Min = math.Inf(+1)
+		} else {
+			minInt, _ := strconv.Atoi(min)
+			nargs.Min = float64(minInt)
+		}
 		if max == "inf" {
 			nargs.Max = math.Inf(+1)
 		} else {
 			maxInt, _ := strconv.Atoi(max)
 			nargs.Max = float64(maxInt)
 		}
-		if nargs.Min == 0 && nargs.Max == 0 {
-			panic("cannot use min 0 and max 0 for nargs")
-		}
-	} else if regexp.MustCompile(`\d+`).MatchString(value) {
+	} else if regexp.MustCompile(`^-?\d+$`).MatchString(value) {
 		staticInt, _ := strconv.Atoi(value)
 		nargs.Min = float64(staticInt)
 		nargs.Max = float64(staticInt)
 	} else {
-		panic("unable to parse nargs " + value)
+		return CliNargs{}, fmt.Errorf("unable to parse nargs " + value)
 	}
 
-	return nargs
+	if nargs.Min < 0 || nargs.Max < 0 {
+		return CliNargs{}, fmt.Errorf("cannot have negative values for nargs " + value)
+	}
+
+	if nargs.Min > nargs.Max {
+		return CliNargs{}, fmt.Errorf("cannot have a min greater than max narg " + value)
+	}
+
+	if nargs.Max == 0 {
+		return CliNargs{}, fmt.Errorf("cannot use 0 for narg max " + value)
+	}
+
+	return nargs, nil
 }
 
 func ParseOperations(operationsStr string) (Cli, error) {
@@ -523,7 +536,10 @@ func ParseOperations(operationsStr string) (Cli, error) {
 				}
 				if value, ok := tryOption(word, "--nargs"); ok {
 					nargs := arg.NArgs
-					nargs = parseNargs(value, nargs)
+					nargs, err := parseNargs(value, nargs)
+					if err != nil {
+						return Cli{}, err
+					}
 					arg.NArgs = nargs
 					if nargs.Min != nargs.Max || nargs.Max == math.Inf(+1) {
 						cli.prevNArgIndeterminant = true
@@ -558,7 +574,10 @@ func ParseOperations(operationsStr string) (Cli, error) {
 				}
 				if value, ok := tryOption(word, "--nargs"); ok {
 					nargs := opt.NArgs
-					nargs = parseNargs(value, nargs)
+					nargs, err := parseNargs(value, nargs)
+					if err != nil {
+						return Cli{}, err
+					}
 					opt.NArgs = nargs
 				}
 			}
