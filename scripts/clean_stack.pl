@@ -6,6 +6,7 @@ if ($0 =~ /^\.\//) {
 } else {
     $root_dir = $0 =~ s#scripts\/clean_stack\.pl##r;
 }
+my $first_line = 1;
 my $prev_line = "";
 my $curr_line = "";
 my $build_failed = 0;
@@ -15,16 +16,22 @@ while (<>) {
     }
 
     # buffer two lines at a time
-    if ($curr_line ne "") {
+    if ($first_line eq 0) {
         $prev_line = $curr_line;
+    } else {
+        $first_line = 0;
     }
     $curr_line = "$_";
 
-    if (/\.go:/g) {
+    if (/^\s*\/.*\.go:/g) {
         # on file line
         unless (s/$root_dir//) {
-            $prev_line = "";
-            $curr_line = "";
+            if ($prev_line =~ /\.go/) {
+                $curr_line = "";
+            } else {
+                $prev_line = "";
+                $curr_line = "";
+            }
         }
     } elsif (/goroutine.*?\[running\]:/) {
         $prev_line = "";

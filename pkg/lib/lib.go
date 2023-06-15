@@ -141,7 +141,18 @@ func (parser CliParser) OptionalsNames() []string {
 	return names
 }
 
+func (parser CliParser) OptionalsNameMap() map[string]string {
+	names := make(map[string]string, len(parser.optionals))
+	for _, optional := range parser.optionals {
+		names[optional.name] = "1"
+	}
+	return names
+}
+
 func (parser CliParser) OptionalsData() map[string]string {
+	key := func(format string, vals ...any) string {
+		return fmt.Sprintf(format, vals...)
+	}
 	assoc := make(map[string]string, 0)
 	for _, optional := range parser.optionals {
 		if optional.completeType != "" {
@@ -159,6 +170,21 @@ func (parser CliParser) OptionalsData() map[string]string {
 				assoc["__narg_max__,"+optional.name] = fmt.Sprintf("%.0f", optional.NArgs.Max)
 			}
 			assoc["__narg_count__,"+optional.name] = "0"
+		}
+		name := optional.name
+		if len(optional.alternatives) > 0 {
+			// todo: algorithm complexity for alternatives is currently O(n*n)
+			allAlternatives := append(optional.alternatives, name)
+			for i, altCur := range allAlternatives {
+				index := 0
+				for j, altOther := range allAlternatives {
+					if i == j {
+						continue
+					}
+					assoc[key("__alternatives__,%s,%d", altCur, index)] = altOther
+					index += 1
+				}
+			}
 		}
 	}
 
@@ -192,6 +218,7 @@ type CliNargs struct {
 	Min    float64
 	Max    float64
 	Unique bool
+	IsSet  bool
 }
 
 type CliPositional struct {
@@ -211,6 +238,7 @@ type CliOptional struct {
 	closureName  string
 	choices      []string
 	NArgs        CliNargs
+	alternatives []string
 }
 
 type ReloadTrigger struct {
@@ -426,6 +454,7 @@ func parseNargs(value string, nargs CliNargs) (CliNargs, error) {
 		return CliNargs{}, fmt.Errorf("cannot use 0 for narg max " + value)
 	}
 
+	nargs.IsSet = true
 	return nargs, nil
 }
 
@@ -561,7 +590,10 @@ func ParseOperations(operationsStr string) (Cli, error) {
 				opt.parser = DefaultParser
 			}
 
-			opt.name = unquote(words[1])
+			optName := unquote(words[1])
+			optNameSplit := strings.Split(optName, "|")
+			opt.name = optNameSplit[0]
+			opt.alternatives = optNameSplit[1:]
 
 			for _, word := range words {
 				if value, ok := tryOption(word, "--choices"); ok {
@@ -583,6 +615,23 @@ func ParseOperations(operationsStr string) (Cli, error) {
 			}
 
 			parsers.addOptional(opt)
+
+			if len(opt.alternatives) > 0 {
+				if opt.NArgs.IsSet {
+					return Cli{}, fmt.Errorf("nargs and alternatives is not supported")
+				}
+				for _, alt := range opt.alternatives {
+					altOpt := CliOptional{
+						parser:       opt.parser,
+						parserParent: opt.parserParent,
+						name:         alt,
+						completeType: opt.completeType,
+						closureName:  opt.closureName,
+						choices:      opt.choices,
+					}
+					parsers.addOptional(altOpt)
+				}
+			}
 		case "psr":
 			// allow standalone subparsers that only do one thing
 			var parentParserName string

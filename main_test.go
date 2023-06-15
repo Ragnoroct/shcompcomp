@@ -298,6 +298,16 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli --key value --key value asdf asdf sdfdsfd asddf faa ", "--key")
 	})
 
+	suite.Run("option alternatives", func() {
+		shell := testutil.ParseOperations(`
+			cfg cli_name=testcli
+			opt --help|-help|-h
+		`)
+		suite.RequireComplete(shell, "testcli ", "--help -help -h")
+		suite.RequireComplete(shell, "testcli -h ", "")
+		suite.RequireComplete(shell, "testcli --help ", "")
+		suite.RequireComplete(shell, "testcli -help ", "")
+	})
 	suite.Run("combining single opt flags -v -v -v into -vvv", func() {})
 }
 
@@ -407,8 +417,6 @@ func (suite *MainTestSuite) TestNargsErrorHandling() {
 }
 
 func (suite *MainTestSuite) FutureTests() {
-	suite.Run("option exlusivity -h or --help not both", func() {})
-
 	suite.Run("sort results by pos -> --help option", func() {})
 	suite.Run("options with values but prefer equals sign", func() {})
 	suite.Run("allow closures through comments", func() {})

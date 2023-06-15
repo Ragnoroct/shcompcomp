@@ -14,7 +14,8 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
 
   # options
   {{range $parser := .Parsers -}}
-  local _option_{{$parser.NameClean}}_names={{ BashArray $parser.OptionalsNames 2 }}
+  local -A _option_{{$parser.NameClean}}_name_map={{ BashAssocQuote $parser.OptionalsNameMap 2 }}
+  local -a _option_{{$parser.NameClean}}_names={{ BashArray $parser.OptionalsNames 2 }}
   local -A _option_{{$parser.NameClean}}_data={{ BashAssocQuote $parser.OptionalsData 2 }}
   {{ end }}
 
@@ -79,6 +80,18 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
           fi
         fi
       fi
+      # todo: only add code if alternatives code is required
+      local limit=99
+      local idx=0
+      local alt
+      local -n options_name_map="_option_${current_parser_clean}_name_map"
+      while true; do
+        alt="${option_data["__alternatives__,$word,$idx"]}"
+        if [[ "$idx" -ge "$limit" || -z "$alt" ]]; then break; fi
+        idx=$((idx+1))
+        options_name_map["$alt"]=0
+      done
+      option_data["__alternatives__,__used__,$word"]=1
       if ((i<=cword_index)); then
         if [[ "$reached_max" == 1 ]]; then
           used_options["$word"]=1
@@ -169,11 +182,12 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     esac
 
     # options
-    local -n choices_options="_option_${parser}_names"
-    for i in "${!choices_options[@]}"; do
-      choice_option="${choices_options[$i]}"
-      if [[ "${used_options[$choice_option]}" != 1 ]]; then
-        choices_all+=("${choices_options[$i]}")
+    local -n options_name_map="_option_${parser}_name_map"
+    local -n options_name_seq="_option_${parser}_names"
+    local -n option_data="_option_${parser}_data"
+    for name in "${options_name_seq[@]}"; do
+      if [[ "${options_name_map[$name]}" == 1 && "${used_options[$name]}" != 1 ]]; then
+        choices_all+=("$name")
       fi
     done
 

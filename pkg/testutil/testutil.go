@@ -93,10 +93,13 @@ func (suite *BaseSuite) TempDir() (filepath string) {
 }
 
 type CompleterProcess struct {
-	stdin      *io.WriteCloser
-	chanOut    chan string
-	chanStderr chan string
-	mutex      sync.Mutex
+	stdin             *io.WriteCloser
+	chanOut           chan string
+	chanStderr        chan string
+	chanFlush         chan bool
+	chanTimeoutStderr chan string
+	chanTimeoutStdout chan string
+	mutex             sync.Mutex
 }
 type completerProcesses struct {
 	processMap map[string]*CompleterProcess
@@ -112,12 +115,16 @@ func CompleterFile(shellFile string) *CompleterProcess {
 	if process, ok := processes.processMap[processKey]; ok {
 		return process
 	} else {
-		chanOut, chanStderr, stdin := startProcess("", shellFile)
+		chanFlush := make(chan bool)
+		chanOut, chanStderr, chanTimeoutStdout, chanTimeoutStderr, stdin := startProcess("", shellFile, chanFlush)
 		process = &CompleterProcess{
-			chanOut:    chanOut,
-			chanStderr: chanStderr,
-			stdin:      stdin,
-			mutex:      sync.Mutex{},
+			chanOut:           chanOut,
+			chanStderr:        chanStderr,
+			chanFlush:         chanFlush,
+			chanTimeoutStdout: chanTimeoutStdout,
+			chanTimeoutStderr: chanTimeoutStderr,
+			stdin:             stdin,
+			mutex:             sync.Mutex{},
 		}
 
 		processes.processMap[processKey] = process
@@ -133,12 +140,16 @@ func Completer(completeShell string) *CompleterProcess {
 	if process, ok := processes.processMap[completeShell]; ok {
 		return process
 	} else {
-		chanOut, chanStderr, stdin := startProcess(completeShell, "")
+		chanFlush := make(chan bool)
+		chanOut, chanStderr, chanTimeoutStdout, chanTimeoutStderr, stdin := startProcess(completeShell, "", chanFlush)
 		process = &CompleterProcess{
-			chanOut:    chanOut,
-			chanStderr: chanStderr,
-			stdin:      stdin,
-			mutex:      sync.Mutex{},
+			chanOut:           chanOut,
+			chanStderr:        chanStderr,
+			chanFlush:         chanFlush,
+			chanTimeoutStdout: chanTimeoutStdout,
+			chanTimeoutStderr: chanTimeoutStderr,
+			stdin:             stdin,
+			mutex:             sync.Mutex{},
 		}
 
 		processes.processMap[completeShell] = process
@@ -161,7 +172,10 @@ func (p *CompleterProcess) Complete(cmdStr string) string {
 	select {
 	case out = <-p.chanOut:
 	case <-chanTimeout:
-		panic("error : timeout on waiting for complete")
+		p.chanFlush <- true
+		stdout := <-p.chanTimeoutStdout
+		stderr := <-p.chanTimeoutStderr
+		panic(fmt.Sprintf("error : timeout on waiting for complete\nstdout:\n%s\nstderr:\n%s", stdout, stderr))
 	}
 
 	outStderr := <-p.chanStderr
@@ -293,12 +307,14 @@ func (stdout StdoutMock) GetString() string {
 	return buf.String()
 }
 
-func startProcess(shellCode string, filename string) (chan string, chan string, *io.WriteCloser) {
+func startProcess(shellCode string, filename string, flushOutput chan bool) (chan string, chan string, chan string, chan string, *io.WriteCloser) {
 	var err error
 	var bashOutBuffer []byte
 	var stderrBuffer []byte
 	var chanOut = make(chan string)
 	var chanStderr = make(chan string)
+	var chanTimeoutStdout = make(chan string)
+	var chanTimeoutStderr = make(chan string)
 
 	var shellCodePrefix string
 	if shellCode != "" {
@@ -389,6 +405,18 @@ func startProcess(shellCode string, filename string) (chan string, chan string, 
 	}()
 
 	go func() {
+		for {
+			<-flushOutput
+			out := string(bashOutBuffer)
+			outstderr := string(stderrBuffer)
+			bashOutBuffer = []byte{}
+			stderrBuffer = []byte{}
+			chanTimeoutStdout <- out
+			chanTimeoutStderr <- outstderr
+		}
+	}()
+
+	go func() {
 		var err error
 		var n int
 		buff := make([]byte, 256)
@@ -400,7 +428,7 @@ func startProcess(shellCode string, filename string) (chan string, chan string, 
 		}
 	}()
 
-	return chanOut, chanStderr, &stdin
+	return chanOut, chanStderr, chanTimeoutStdout, chanTimeoutStderr, &stdin
 }
 
 func check(err error) {
