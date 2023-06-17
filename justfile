@@ -135,3 +135,15 @@ build-watch:
 @build:
   mkdir -p "build"
   go build -o "build/shcomp2"
+
+ci: ci-build ci-test ci-format
+
+ci-build:
+  mkdir -p "build"
+  go build -o "build/shcomp2"
+
+ci-test:
+  go test ./...
+
+ci-format:
+  gofmt_out="$(gofmt -l .)" && test -z "$gofmt_out" || { printf "error: go files incorrectly formatted\n%s\n" "$gofmt_out"; exit 1; }

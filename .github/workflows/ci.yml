@@ -1,0 +1,36 @@
+name: "CI"
+
+on:
+  push: { }
+
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
+env:
+  JUST_VERSION: 1.14.0
+
+jobs:
+  test:
+    name: "test"
+    runs-on: ubuntu-latest
+    steps:
+      -
+        uses: actions/checkout@v3
+      -
+        name: cache just binary
+        id: cache-binary-just
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/bin/just
+          key: binary-just-${{ env.JUST_VERSION }}
+      -
+        name: install just binary
+        if: ${{ steps.cache-binary-just.outputs.cache-hit != 'true' }}
+        run:
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
+            | bash -s -- --force --to ~/.local/bin --tag "${{ env.JUST_VERSION }}"
+      -
+        uses: actions/setup-go@v4
+      -
+        run: just ci

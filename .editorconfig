@@ -1,0 +1,13 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+
+# noinspection EditorConfigKeyCorrectness
+[{.scratch,build,compile,.direnv}**/*]
+ij_formatter_enabled = false
+generated_code = true
+
+[.github/**/*.yml]
+ij_yaml_block_mapping_on_new_line = true
