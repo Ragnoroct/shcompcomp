@@ -309,6 +309,7 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli -help ", "")
 	})
 	suite.Run("combining single opt flags -v -v -v into -vvv", func() {})
+	suite.Run("allow closures through comments", func() {})
 }
 
 func (suite *MainTestSuite) TestNargsErrorHandling() {
@@ -419,7 +420,6 @@ func (suite *MainTestSuite) TestNargsErrorHandling() {
 func (suite *MainTestSuite) FutureTests() {
 	suite.Run("sort results by pos -> --help option", func() {})
 	suite.Run("options with values but prefer equals sign", func() {})
-	suite.Run("allow closures through comments", func() {})
 	suite.Run("autgenpy follow imports to other files", func() {})
 	suite.Run("subparsers cmds are always the first positional and cannot clash", func() {})
 	suite.Run("custom log", func() {})

@@ -236,4 +236,30 @@ func (suite *Suite) TestSrcFromCmd() {
 	suite.RequireComplete(shell, "testcli ", "--help")
 }
 
-func (suite *Suite) TestNargs() {}
+func (suite *Suite) TestNargsOptions() {
+	file := suite.CreateFile("file.py", `
+		from argparse import ArgumentParser
+		parser = ArgumentParser()
+		parser.add_argument("-a", nargs=1)
+		parser.add_argument("-b", nargs="?")
+		parser.add_argument("-c", nargs="*")
+		parser.add_argument("-d", nargs="+")
+		parser.parse_args()
+	`)
+
+	shell := suite.AutogenParseCfg(
+		`
+		cfg cli_name=testcli
+		cfg autogen_lang=py
+		cfg autogen_file=%s
+		cfg outfile=-
+		`,
+		file,
+	)
+
+	suite.RequireComplete(shell, "testcli ", "-a -b -c -d")
+	suite.RequireComplete(shell, "testcli -a ", "-b -c -d")
+	suite.RequireComplete(shell, "testcli -a -b ", "-c -d")
+	suite.RequireComplete(shell, "testcli -a -b -c ", "-c -d")
+	suite.RequireComplete(shell, "testcli -a -b -c -d ", "-c -d")
+}

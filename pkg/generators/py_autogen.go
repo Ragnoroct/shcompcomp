@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"shcomp2/pkg/lib"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -287,6 +288,27 @@ func getArgumentOperations(root *sitter.Node, pyBaseParser pyIdentifier, src []b
 					panic("cannot handle choices that isnt' a list")
 				}
 			}
+			if nargs, ok := kwargs["nargs"]; ok {
+				var nargsValue string
+				if nargsStr, ok := nargs.(string); ok {
+					switch nargsStr {
+					case "*":
+						nargsValue = "*"
+					case "+":
+						nargsValue = "+"
+					case "?":
+						nargsValue = "?"
+					default:
+						panic("invalid narg string " + nargsStr)
+					}
+
+					operation = append(operation, fmt.Sprintf(`--nargs="%s"`, nargsValue))
+				} else if nargsInt, ok := nargs.(int); ok {
+					operation = append(operation, fmt.Sprintf(`--nargs="%d"`, nargsInt))
+				} else {
+					panic("cannot handle choices that isnt' a list")
+				}
+			}
 
 			operations = append(operations, strings.Join(operation, " "))
 		}
@@ -333,6 +355,8 @@ func getPyArguments(callNode *sitter.Node, src []byte) pyArguments {
 			value = false
 		case "none":
 			value = nil
+		case "integer":
+			value, _ = strconv.Atoi(argNode.Content(src))
 		default:
 			panicNode(argNode, fmt.Sprintf("unhandled Node.Type() '%s'", argNode.Type()))
 		}
