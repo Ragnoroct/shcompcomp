@@ -1,4 +1,10 @@
-# shcompcomp
+<h1 align="center"><code>shcompcomp</code></h1>
+<div align="center">
+  <a href="https://github.com/Ragnoroct/shcompcomp/actions/workflows/ci.yml">
+    <img src="https://github.com/Ragnoroct/shcompcomp/actions/workflows/ci.yml/badge.svg" alt="github ci status">
+  </a>
+</div>
+
 Generate command completion scripts using simple configs
 
 **supported shells**
