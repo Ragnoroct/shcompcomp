@@ -253,6 +253,7 @@ func (r ReloadTrigger) String() string {
 type CliConfig struct {
 	Outfile               string
 	IncludeSources        []string
+	MergeSingleOpt        bool
 	AutogenLang           string
 	AutogenFile           string
 	AutogenClosureCmd     string
@@ -509,6 +510,10 @@ func ParseOperations(operationsStr string) (Cli, error) {
 				cli.Config.AutogenClosureFunc = configValue
 			case "autogen_closure_source":
 				cli.Config.AutogenClosureSource = configValue
+			case "merge_single_opt":
+				if strings.TrimSpace(configValue) == "1" {
+					cli.Config.MergeSingleOpt = true
+				}
 			case "autogen_reload_trigger":
 				reloadTrigger := ReloadTrigger{
 					File:      configValue,

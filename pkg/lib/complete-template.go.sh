@@ -87,12 +87,12 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
       local -n options_name_map="_option_${current_parser_clean}_name_map"
       while true; do
         alt="${option_data["__alternatives__,$word,$idx"]}"
-        if [[ "$idx" -ge "$limit" || -z "$alt" ]]; then break; fi
+        if [[ $idx -ge $limit || -z "$alt" ]]; then break; fi
         idx=$((idx+1))
         options_name_map["$alt"]=0
       done
       option_data["__alternatives__,__used__,$word"]=1
-      if ((i<=cword_index)); then
+      if ((i<cword_index)); then
         if [[ "$reached_max" == 1 ]]; then
           used_options["$word"]=1
         fi

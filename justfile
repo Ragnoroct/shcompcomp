@@ -89,7 +89,7 @@ logs:
   | sed -u s/WARNING/"$yellow&$reset"/i \
   ;
 
-build-watch:
+build:
     #!/usr/bin/env bash
     title="build"
     proj_dir="$PWD"
@@ -112,7 +112,7 @@ build-watch:
       [[ "$path_rel" =~ ^(.git/|.idea/|build/|scratch/|archive/|compile/) ]] && return
       [[ "$path_rel" =~ (.lock|.log)$ ]] && return
 
-      if [[ "$1" =~ ".go"$ && ! "$1" =~ "_test.go"$ && ! "$1" =~ "testutil.go"$ ]]; then
+      if [[ ( "$1" =~ ".go"$ || $1 =~ \.go\.sh$ ) && ! "$1" =~ "_test.go"$ && ! "$1" =~ "testutil.go"$ ]]; then
         profile_start="$EPOCHREALTIME"
         if ! build_out="$(go build -o "build/shcomp2" 2>&1 1>&3)"; then
           log "[build] compile error:\n$build_out"
@@ -131,10 +131,6 @@ build-watch:
     while read -r dir events filename; do
       inotify_action "$dir$filename"
     done
-
-@build:
-  mkdir -p "build"
-  go build -o "build/shcomp2"
 
 ci: ci-build ci-test ci-format
 
