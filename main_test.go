@@ -96,11 +96,11 @@ func (suite *MainTestSuite) TestCases() {
 			opt "-h"
 			opt "--help"
 		`)
+		suite.RequireComplete(shell, "testcli --help ", "c1 c2 c3 -h")
 		suite.RequireComplete(shell, "testcli ", "c1 c2 c3 -h --help")
 		suite.RequireComplete(shell, "testcli c", "c1 c2 c3")
 		suite.RequireComplete(shell, "testcli -", "-h --help")
 		suite.RequireComplete(shell, "testcli c3 ", "-h --help")
-		suite.RequireComplete(shell, "testcli --help ", "c1 c2 c3 -h")
 		suite.RequireComplete(shell, "testcli -h ", "c1 c2 c3 --help")
 	})
 
@@ -311,12 +311,14 @@ func (suite *MainTestSuite) TestCases() {
 	suite.Run("combining single opt flags -v -v -v into -vvv", func() {
 		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
-			opt -v|-vv|-vvv
+			cfg merge_single_opt=1
+			opt -v --nargs=3
 		`)
-		suite.RequireComplete(shell, "testcli ", "-v -vv -vvv")
-		suite.RequireComplete(shell, "testcli -v", "-vv -vvv")
-		//suite.RequireComplete(shell, "testcli -vv", "-vvv")
-		//suite.RequireComplete(shell, "testcli -vvv", "")
+		suite.RequireComplete(shell, "testcli -vv", "-vv -vvv")
+		suite.RequireComplete(shell, "testcli ", "-v")
+		suite.RequireComplete(shell, "testcli -v", "-v -vv")
+		suite.RequireComplete(shell, "testcli -vvv", "-vvv")
+		suite.RequireComplete(shell, "testcli -vvv ", "")
 	})
 	suite.Run("should only complete word if no other matches and no space", func() {
 		shell := testutil.ParseOperations(`

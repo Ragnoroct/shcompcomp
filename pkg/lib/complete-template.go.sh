@@ -67,35 +67,73 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     fi
 
     # option
+    local -n option_data="_option_${current_parser_clean}_data"
+    local -n option_map="_option_${current_parser_clean}_name_map"
     if [[ "$word" =~ ^'-' && "$i" -le "$cword_index" ]]; then
-      local reached_max=1
-      local -n option_data="_option_${current_parser_clean}_data"
-      if [[ -v "option_data[__narg_max__,$word]" ]]; then
-        if [[ "${option_data["__narg_max__,$word"]}" == "inf" ]]; then
-          reached_max=0
-        else
-          option_data["__narg_count__,$word"]=$((option_data["__narg_count__,$word"]+1))
-          if [[ "${option_data["__narg_count__,$word"]}" -lt "${option_data["__narg_max__,$word"]}" ]]; then
+      if [[ ${#word} == 2 || -n ${option_map[$word]} ]]; then
+        local reached_max=1
+        if [[ -v "option_data[__narg_max__,$word]" ]]; then
+          if [[ "${option_data["__narg_max__,$word"]}" == "inf" ]]; then
             reached_max=0
+          else
+            option_data["__narg_count__,$word"]=$((option_data["__narg_count__,$word"]+1))
+            if [[ "${option_data["__narg_count__,$word"]}" -lt "${option_data["__narg_max__,$word"]}" ]]; then
+              reached_max=0
+            fi
           fi
         fi
-      fi
-      # todo: only add code if alternatives code is required
-      local limit=99
-      local idx=0
-      local alt
-      local -n options_name_map="_option_${current_parser_clean}_name_map"
-      while true; do
-        alt="${option_data["__alternatives__,$word,$idx"]}"
-        if [[ $idx -ge $limit || -z "$alt" ]]; then break; fi
-        idx=$((idx+1))
-        options_name_map["$alt"]=0
-      done
-      option_data["__alternatives__,__used__,$word"]=1
-      if ((i<cword_index)); then
-        if [[ "$reached_max" == 1 ]]; then
-          used_options["$word"]=1
+        # todo: only add code if alternatives code is required
+        local limit=99
+        local idx=0
+        local alt
+        local -n options_name_map_loop="_option_${current_parser_clean}_name_map"
+        while true; do
+          alt="${option_data["__alternatives__,$word,$idx"]}"
+          if [[ $idx -ge $limit || -z "$alt" ]]; then break; fi
+          idx=$((idx+1))
+          options_name_map_loop["$alt"]=0
+        done
+        option_data["__alternatives__,__used__,$word"]=1
+        if ((i<cword_index)); then
+          if [[ "$reached_max" == 1 ]]; then
+            used_options["$word"]=1
+          fi
         fi
+      elif [[ ${#word} -ge 2 || $cword_index == $i ]]; then
+        # count option usage in merged opts
+        local opt
+        while IFS='' read -r -d '' -n 1 char; do
+          if [[ $char != $'\n' && $char != '-' ]]; then
+            opt="-$char"
+            local reached_max=1
+            if [[ -n ${option_data[__narg_max__,$opt]} ]]; then
+              if [[ "${option_data["__narg_max__,$opt"]}" == "inf" ]]; then
+                reached_max=0
+              else
+                option_data["__narg_count__,$opt"]=$((option_data["__narg_count__,$opt"]+1))
+                if [[ "${option_data["__narg_count__,$opt"]}" -lt "${option_data["__narg_max__,$opt"]}" ]]; then
+                  reached_max=0
+                fi
+              fi
+            fi
+            # todo: only add code if alternatives code is required
+            local limit=99
+            local idx=0
+            local alt
+            local -n options_name_map="_option_${current_parser_clean}_name_map"
+            while true; do
+              alt="${option_data["__alternatives__,$opt,$idx"]}"
+              if [[ $idx -ge $limit || -z "$alt" ]]; then break; fi
+              idx=$((idx+1))
+              options_name_map["$alt"]=0
+            done
+            option_data["__alternatives__,__used__,$opt"]=1
+            if [[ "$reached_max" == 1 ]]; then
+              used_options["$opt"]=1
+              options_name_map["$opt"]=0
+            fi
+          fi
+        done <<< "$word"
       fi
     fi
 
@@ -181,10 +219,37 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
         ;;
     esac
 
-    # options
     local -n options_name_map="_option_${parser}_name_map"
     local -n options_name_seq="_option_${parser}_names"
-    local -n option_data="_option_${parser}_data"
+    local -n options_name_dat="_option_${parser}_data"
+
+    {{ if .Cli.Config.MergeSingleOpt }}
+    local shortopt_merged shortopt_merged_appended=0
+    if [[ $current_word =~ -[^-].* ]]; then
+      if [[ ${options_name_map[$current_word]} == 1 && ${#current_word} -gt 2 ]]; then
+        # todo: add test case for this
+        :
+      elif [[ -z "${options_name_dat[__type__,$current_word]}" ]]; then
+        # todo: looping over options seq twice
+        shortopt_merged="$current_word"
+        for name in "${options_name_seq[@]}"; do
+          if [[ "${options_name_map[$name]}" == 1 && "${used_options[$name]}" != 1 && ${#name} == 2 ]]; then
+            shortopt_merged+="${name##-}"
+            shortopt_merged_appended=1
+            options_name_map["$name"]=0
+          fi
+        done
+      fi
+    fi
+    if [[ -n "$shortopt_merged" ]]; then
+      choices_all+=("$current_word")
+      if [[ $shortopt_merged_appended == 1 ]]; then
+        choices_all+=("$shortopt_merged")
+      fi
+    fi
+    {{ end }}
+
+    # options
     for name in "${options_name_seq[@]}"; do
       if [[ "${options_name_map[$name]}" == 1 && "${used_options[$name]}" != 1 ]]; then
         choices_all+=("$name")
