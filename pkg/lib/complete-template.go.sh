@@ -298,6 +298,8 @@ OEF
   local return_code="$?"
   if [[ "$return_code" == 5 ]]; then
     source "{{.Cli.Config.Outfile}}" # source self to reload changes
+  elif [[ "$return_code" != 0 ]]; then
+    >&2 echo "reload-check failed: $return_code"
   fi
 
   __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}}

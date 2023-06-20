@@ -78,7 +78,7 @@ complete_str() {
 
   complete_func="$(complete -p "$cmd_name" | awk '{print $(NF-1)}')"
   __complete_str_compopt_current_cmd="$cmd_name"
-  "$complete_func" &>/tmp/bashcompletils.out
+  "$complete_func"
   __complete_str_compopt_current_cmd=""
   unset compopt
 
@@ -92,7 +92,6 @@ elif [ -f /etc/bash_completion ]; then
 fi
 
 while IFS= read -r line; do
-  log "trying to complete: '$line'"
   complete_str "$line"
   printf '\0'
 done

@@ -79,14 +79,16 @@ logs:
   cyan="$(tput setaf 6)"
   reset="$(printf "%b" "\033[0m")"
   tail -f "$log_file" \
-  | sed -u s/"go compilation error"/"$red&$reset"/i \
-  | sed -u s/"RUNNING TESTS"/"$magenta&$reset"/i \
-  | sed -u s/"RESULTS FAIL"/"$red&$reset"/i \
-  | sed -u s/"\(FAIL\)\(.*\)\(test.*\)"/"$red\1$reset\2$cyan\3$reset"/i \
-  | sed -u s/"FAIL"/"$red&$reset"/i \
-  | sed -u s/"TEST:.*"/"$cyan&$reset"/i \
-  | sed -u s/PASS/"$green&$reset"/i \
-  | sed -u s/WARNING/"$yellow&$reset"/i \
+  | sed -u \
+    -e 's/\[\x00-\x09\x0B-\x1F\x7F]//' \
+    -e s/"go compilation error"/"$red&$reset"/i \
+    -e s/"RUNNING TESTS"/"$magenta&$reset"/i \
+    -e s/"RESULTS FAIL"/"$red&$reset"/i \
+    -e s/"\(FAIL\)\(.*\)\(test.*\)"/"$red\1$reset\2$cyan\3$reset"/i \
+    -e s/"FAIL"/"$red&$reset"/i \
+    -e s/"TEST:.*"/"$cyan&$reset"/i \
+    -e s/PASS/"$green&$reset"/i \
+    -e s/WARNING/"$yellow&$reset"/i \
   ;
 
 build:

@@ -64,13 +64,18 @@ func (suite *BaseSuite) RequireComplete(shell, cmdStr string, expected string) {
 	suite.T().Helper()
 	t := suite.T()
 	writeCompiled := func() string {
+		content := []byte(shell)
+		if matches := regexp.MustCompile(`source (.+)$`).FindStringSubmatch(shell); matches != nil {
+			content, _ = os.ReadFile(matches[1])
+		}
+
 		testname := suite.T().Name()
 		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
 		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
 		testname = strings.ToLower(testname)
 		testname += ".bash"
 		compilePath := path.Join(basepath, "../../compile/"+testname)
-		_ = os.WriteFile(compilePath, []byte(shell), 0644)
+		_ = os.WriteFile(compilePath, content, 0644)
 		return compilePath
 	}
 
@@ -206,10 +211,10 @@ func Completer(shell string) *CompleterProcess {
 		buildBinaryPath := path.Join(cwd, "build")
 
 		envCopy := os.Environ()
-		for _, keyVal := range envCopy {
+		for i, keyVal := range envCopy {
 			split := strings.Split(keyVal, "=")
 			if split[0] == "PATH" {
-				split[0] = buildBinaryPath + ":" + split[0]
+				envCopy[i] = split[0] + "=" + buildBinaryPath + ":" + split[1]
 			}
 		}
 

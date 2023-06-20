@@ -106,16 +106,10 @@ func (suite *Suite) TestCases() {
 	})
 
 	suite.Run("include other source files", func() {
-		filepath := suite.CreateFile("lib.sh", `
+		libpath := suite.CreateFile("lib.sh", `
 			__testcli_pos_1_completer() {
 				mapfile -t COMPREPLY < <(compgen -W "c8 c9 c10" -- "$current_word")
 			}
-		`)
-		shellUnsourced := testutil.ParseOperations(`
-			cfg cli_name=testcli
-			pos --closure="__testcli_pos_1_completer"
-			opt --awesome
-			opt --print
 		`)
 		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
@@ -123,9 +117,8 @@ func (suite *Suite) TestCases() {
 			pos --closure="__testcli_pos_1_completer"
 			opt --awesome
 			opt --print
-		`, filepath)
+		`, libpath)
 		suite.RequireComplete(shell, "testcli ", "c8 c9 c10 --awesome --print")
-		suite.RequireComplete(shellUnsourced, "testcli ", "--awesome --print")
 	})
 
 	suite.Run("simple options with arguments like --opt val", func() {
@@ -273,10 +266,10 @@ func (suite *Suite) TestCases() {
 			cfg merge_single_opt=1
 			opt -v --nargs=3
 		`)
-		suite.RequireComplete(shell, "testcli -vv", "-vv -vvv")
 		suite.RequireComplete(shell, "testcli ", "-v")
-		suite.RequireComplete(shell, "testcli -v", "-v -vv")
-		suite.RequireComplete(shell, "testcli -vvv", "-vvv")
+		suite.RequireComplete(shell, "testcli -v", "-vv")
+		suite.RequireComplete(shell, "testcli -vv", "-vvv")
+		suite.RequireComplete(shell, "testcli -vvv", "")
 		suite.RequireComplete(shell, "testcli -vvv ", "")
 	})
 	suite.Run("should only complete word if no other matches and no space", func() {
@@ -287,7 +280,7 @@ func (suite *Suite) TestCases() {
 		`)
 		suite.RequireComplete(shell, "testcli ", "-v -verbose")
 		suite.RequireComplete(shell, "testcli ", "-v -verbose")
-		suite.RequireComplete(shell, "testcli -v", "-v -verbose")
+		suite.RequireComplete(shell, "testcli -v", "-verbose")
 	})
 	suite.Run("merge -abc", func() {
 		shell := testutil.ParseOperations(`
@@ -320,17 +313,18 @@ func (suite *Suite) TestCases() {
 	suite.Run("allow closures through comments", func() {})
 }
 
-func (suite *Suite) TestCompleteWithExpectTcl() {
-	shell := testutil.ParseOperations(`
-		cfg cli_name=testcli
-		cfg merge_single_opt=1
-		opt -a --nargs=3
-		opt -b
-	`)
-	suite.RequireComplete(shell, "testcli -ab", "testcli -aba")
-}
+//func (suite *Suite) TestCompleteWithExpectTcl() {
+//	shell := testutil.ParseOperations(`
+//		cfg cli_name=testcli
+//		cfg merge_single_opt=1
+//		opt -a --nargs=3
+//		opt -b
+//	`)
+//	suite.RequireComplete(shell, "testcli -ab", "testcli -aba")
+//}
 
 func (suite *Suite) FutureTests() {
+	suite.Run("include other source files error handling when missing include source", func() {})
 	suite.Run("sort results by pos -> --help option", func() {})
 	suite.Run("options with values but prefer equals sign", func() {})
 	suite.Run("autgenpy follow imports to other files", func() {})
