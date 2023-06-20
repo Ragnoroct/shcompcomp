@@ -58,15 +58,44 @@ func (suite *BaseSuite) RequireCompleteFile(file, cmdStr string, expected string
 	suite.T().Helper()
 	shell := "source " + file
 	suite.RequireComplete(shell, cmdStr, expected)
+	suite.requireCompleteHelper(completeRequest{
+		shell:      "source " + file,
+		file:       file,
+		testMethod: "bashfunc",
+		cmdStr:     cmdStr,
+	}, expected)
+}
+
+// RequireCompleteWithExpectTcl
+// Use to test compopt logic where you need to know more than just what the function will return
+// Can ensure that output code works correctly and sanely with readline completions
+func (suite *BaseSuite) RequireCompleteWithExpectTcl(shell, cmdStr string, expected string) {
+	suite.T().Helper()
+	file := suite.CreateFile("expecttclsource.sh", shell)
+	suite.requireCompleteHelper(completeRequest{
+		shell:      "source " + file,
+		file:       file,
+		testMethod: "expecttcl",
+		cmdStr:     cmdStr,
+	}, expected)
 }
 
 func (suite *BaseSuite) RequireComplete(shell, cmdStr string, expected string) {
+	suite.requireCompleteHelper(completeRequest{
+		shell:      shell,
+		testMethod: "bashfunc",
+		cmdStr:     cmdStr,
+	}, expected)
+}
+
+func (suite *BaseSuite) requireCompleteHelper(request completeRequest, expected string) {
 	suite.T().Helper()
 	t := suite.T()
+	shell := request.shell
 	writeCompiled := func() string {
 		content := []byte(shell)
-		if matches := regexp.MustCompile(`source (.+)$`).FindStringSubmatch(shell); matches != nil {
-			content, _ = os.ReadFile(matches[1])
+		if request.file != "" {
+			content, _ = os.ReadFile(request.file)
 		}
 
 		testname := suite.T().Name()
@@ -86,8 +115,8 @@ func (suite *BaseSuite) RequireComplete(shell, cmdStr string, expected string) {
 		}
 	}()
 
-	completer := Completer(shell)
-	response := completer.Complete(cmdStr)
+	completer := completer(shell)
+	response := completer.complete(request)
 	if response.error != nil {
 		require.FailNow(
 			suite.T(),
@@ -168,8 +197,25 @@ func ParseOperationsErr(operations string, values ...any) (string, error) {
 
 type CompleterProcess struct {
 	mutex        sync.Mutex
-	chanRequest  chan string
+	chanRequest  chan completeRequest
 	chanResponse chan completeResponse
+}
+
+type completeRequest struct {
+	testMethod string
+	cmdStr     string
+	file       string
+	shell      string
+}
+
+func (c completeRequest) serialize() string {
+	if c.testMethod == "bashfunc" {
+		return strings.Join([]string{c.testMethod, c.cmdStr}, ":") + "\n"
+	} else if c.testMethod == "expecttcl" {
+		return strings.Join([]string{c.testMethod, c.file, c.cmdStr}, ":") + "\n"
+	} else {
+		panic("unknown testmethod: " + c.testMethod)
+	}
 }
 
 type completeResponse struct {
@@ -180,13 +226,13 @@ type completeResponse struct {
 
 var processes map[string]*CompleterProcess
 
-func (p *CompleterProcess) Complete(cmdStr string) completeResponse {
-	p.chanRequest <- cmdStr
+func (p *CompleterProcess) complete(request completeRequest) completeResponse {
+	p.chanRequest <- request
 	response := <-p.chanResponse
 	return response
 }
 
-func Completer(shell string) *CompleterProcess {
+func completer(shell string) *CompleterProcess {
 	if processes == nil {
 		processes = make(map[string]*CompleterProcess)
 	}
@@ -203,7 +249,7 @@ func Completer(shell string) *CompleterProcess {
 		var chanResponse = make(chan completeResponse)
 
 		process = &CompleterProcess{
-			chanRequest:  make(chan string),
+			chanRequest:  make(chan completeRequest),
 			chanResponse: make(chan completeResponse),
 		}
 
@@ -233,7 +279,7 @@ func Completer(shell string) *CompleterProcess {
 		// process requests
 		go func() {
 			for {
-				cmdStr := <-process.chanRequest
+				request := <-process.chanRequest
 				process.chanResponse <- func() completeResponse {
 					mutex.Lock()
 					defer mutex.Unlock()
@@ -246,7 +292,7 @@ func Completer(shell string) *CompleterProcess {
 						chanTimeout <- true
 					}()
 
-					_, _ = io.WriteString(stdin, cmdStr+"\n")
+					_, _ = io.WriteString(stdin, request.serialize())
 
 					select {
 					case response = <-chanResponse:

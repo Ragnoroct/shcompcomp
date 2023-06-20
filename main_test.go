@@ -313,15 +313,15 @@ func (suite *Suite) TestCases() {
 	suite.Run("allow closures through comments", func() {})
 }
 
-//func (suite *Suite) TestCompleteWithExpectTcl() {
-//	shell := testutil.ParseOperations(`
-//		cfg cli_name=testcli
-//		cfg merge_single_opt=1
-//		opt -a --nargs=3
-//		opt -b
-//	`)
-//	suite.RequireComplete(shell, "testcli -ab", "testcli -aba")
-//}
+func (suite *Suite) TestCompleteWithExpectTcl() {
+	shell := testutil.ParseOperations(`
+		cfg cli_name=testcli
+		cfg merge_single_opt=1
+		opt -a --nargs=3
+		opt -b
+	`)
+	suite.RequireCompleteWithExpectTcl(shell, "testcli -ab", "testcli -aba")
+}
 
 func (suite *Suite) FutureTests() {
 	suite.Run("include other source files error handling when missing include source", func() {})

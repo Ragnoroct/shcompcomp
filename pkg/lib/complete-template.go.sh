@@ -46,8 +46,6 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
 
-  log "complete: '$COMP_LINE'"
-
   # default add space after completion
   compopt +o nospace
 
@@ -258,18 +256,6 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
           choices_all+=("$name")
         fi
       fi
-
-      log "num2: ${#choices_all[@]}"
-      log "choices_all2: ${choices_all[*]}"
-      if [[ ${#choices_all[@]} == 1 && ${options_name_dat[__narg_nospace__,$name]} == 1 ]]; then
-        log "NO SPACE ${options_name_dat[__narg_maxed__,$name]}"
-        log "count: ${options_name_dat["__narg_count__,$name"]}"
-        log "max  : ${options_name_dat["__narg_max__,$name"]}"
-{{/*        compopt +o nospace*/}}
-      elif [[ ${#choices_all[@]} == 1 ]]; then
-        :
-{{/*        compopt -o nospace*/}}
-      fi
       {{ else }}
       {{/* no merging of short opts*/}}
       if [[ "${options_name_map[$name]}" == 1 && "${used_options[$name]}" != 1 ]]; then
@@ -277,8 +263,6 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
       fi
       {{ end }}
     done
-
-    log "choices_all: ${choices_all[*]}"
 
     mapfile -t COMPREPLY < <(compgen -W "${choices_all[*]}" -- "$current_word")
   fi

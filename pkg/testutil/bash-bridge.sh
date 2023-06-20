@@ -40,7 +40,7 @@ complete_str_with_expect() {
     send "source $complete_script\r"
     expect -re {>>>}
 
-    send "$input\t\t\r"
+    send "$input\t\r"
     expect -re {(.*)>>>}
 
     set out_fd [open $out_file "w"]
@@ -92,6 +92,18 @@ elif [ -f /etc/bash_completion ]; then
 fi
 
 while IFS= read -r line; do
-  complete_str "$line"
+  IFS=$'\n' read -d "" -ra split <<< "${line//:/$'\n'}"
+  test_method="${split[0]}"
+  if [[ $test_method == bashfunc ]]; then
+    test_line="${line##*:}"
+    complete_str "$test_line"
+  elif [[ $test_method == expecttcl ]]; then
+    test_method="${split[0]}"
+    test_file="${split[1]}"
+    test_line="${line##*:*:}"
+    complete_str_with_expect "$test_line" "$test_file"
+  else
+    >&2 echo "unknown test method: $test_method"
+  fi
   printf '\0'
 done
