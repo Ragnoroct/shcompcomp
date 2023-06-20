@@ -16,55 +16,15 @@ import (
 	"time"
 )
 
-var loggerCleanup func()
-
 func TestSuite(t *testing.T) {
-	suite.Run(t, new(MainTestSuite))
+	suite.Run(t, new(Suite))
 }
 
-type MainTestSuite struct {
-	suite.Suite
-	tmpdir string
+type Suite struct {
+	testutil.BaseSuite
 }
 
-func (suite *MainTestSuite) SetupSuite() {
-	loggerCleanup = lib.SetupLogger()
-	log.Printf("RUNNING TESTS")
-}
-
-func (suite *MainTestSuite) SetupTest() {
-	suite.tmpdir = ""
-}
-
-func (suite *MainTestSuite) SetupSubTest() {
-	suite.tmpdir = ""
-}
-
-func (suite *MainTestSuite) TearDownSuite() {
-	defer loggerCleanup()
-}
-
-func (suite *MainTestSuite) RequireComplete(shell, cmdStr string, expected string) {
-	suite.T().Helper()
-	testutil.ExpectComplete(suite.T(), shell, cmdStr, expected)
-}
-
-func (suite *MainTestSuite) CreateFile(filename string, contents string) (filepath string) {
-	if suite.tmpdir == "" {
-		suite.tmpdir = suite.T().TempDir()
-	}
-
-	filepath = path.Join(suite.tmpdir, filename)
-	contents = lib.Dedent(contents)
-	err := os.WriteFile(filepath, []byte(contents), 0644)
-	if err != nil {
-		panic(err)
-	}
-
-	return filepath
-}
-
-func (suite *MainTestSuite) TestCases() {
+func (suite *Suite) TestCases() {
 	suite.Run("simple", func() {
 		shell := testutil.ParseOperations(`
 			cfg cli_name=bobman
@@ -297,7 +257,6 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli --key value --key ", "value")
 		suite.RequireComplete(shell, "testcli --key value --key value asdf asdf sdfdsfd asddf faa ", "--key")
 	})
-
 	suite.Run("option alternatives", func() {
 		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
@@ -323,7 +282,6 @@ func (suite *MainTestSuite) TestCases() {
 	suite.Run("should only complete word if no other matches and no space", func() {
 		shell := testutil.ParseOperations(`
 			cfg cli_name=testcli
-			cfg outfile="/tmp/tmuxfile.bash"
 			opt -v
 			opt -verbose
 		`)
@@ -331,10 +289,48 @@ func (suite *MainTestSuite) TestCases() {
 		suite.RequireComplete(shell, "testcli ", "-v -verbose")
 		suite.RequireComplete(shell, "testcli -v", "-v -verbose")
 	})
+	suite.Run("merge -abc", func() {
+		shell := testutil.ParseOperations(`
+			cfg cli_name=testcli
+			cfg merge_single_opt=1
+			opt -a
+			opt -b
+			opt -c
+			opt -d
+		`)
+		suite.RequireComplete(shell, "testcli ", "-a -b -c -d")
+		suite.RequireComplete(shell, "testcli -a", "-ab -ac -ad")
+		suite.RequireComplete(shell, "testcli -ab", "-abc -abd")
+		suite.RequireComplete(shell, "testcli -abc", "-abcd")
+		suite.RequireComplete(shell, "testcli -abcd", "")
+	})
+	suite.Run("merge regular and nargs", func() {
+		shell := testutil.ParseOperations(`
+			cfg cli_name=testcli
+			cfg merge_single_opt=1
+			opt -a --nargs=3
+			opt -b
+		`)
+		suite.RequireComplete(shell, "testcli ", "-a -b")
+		suite.RequireComplete(shell, "testcli -a", "-aa -ab")
+		suite.RequireComplete(shell, "testcli -aa", "-aaa -aab")
+		suite.RequireComplete(shell, "testcli -aaa", "-aaab")
+		suite.RequireComplete(shell, "testcli -ab", "-aba")
+	})
 	suite.Run("allow closures through comments", func() {})
 }
 
-func (suite *MainTestSuite) FutureTests() {
+func (suite *Suite) TestCompleteWithExpectTcl() {
+	shell := testutil.ParseOperations(`
+		cfg cli_name=testcli
+		cfg merge_single_opt=1
+		opt -a --nargs=3
+		opt -b
+	`)
+	suite.RequireComplete(shell, "testcli -ab", "testcli -aba")
+}
+
+func (suite *Suite) FutureTests() {
 	suite.Run("sort results by pos -> --help option", func() {})
 	suite.Run("options with values but prefer equals sign", func() {})
 	suite.Run("autgenpy follow imports to other files", func() {})
@@ -404,7 +400,7 @@ func (suite *MainTestSuite) FutureTests() {
 	suite.Run("rethink nargs complexity. is specifying a lower range really necessary", func() {})
 }
 
-func (suite *MainTestSuite) TestMainToStdout() {
+func (suite *Suite) TestMainToStdout() {
 	stdout := mainWithStdout(
 		`
 		cfg cli_name=bobman
@@ -418,7 +414,7 @@ func (suite *MainTestSuite) TestMainToStdout() {
 	}
 }
 
-func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
+func (suite *Suite) TestEndToEndAutoGenWithReload() {
 	t := suite.T()
 	tmpDir := t.TempDir()
 
@@ -477,7 +473,7 @@ func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
 	}
 
 	// todo: test that it only reloads when changes are made to trigger files
-	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome")
+	suite.RequireCompleteFile(completeFile, "bobman ", "--awesome")
 
 	hashBeforeReload := hashFile("cmd.bash")
 
@@ -488,16 +484,16 @@ func (suite *MainTestSuite) TestEndToEndAutoGenWithReload() {
 		`)
 	time.Sleep(time.Millisecond) // allow reload to pickup time change
 
-	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome-times-infinity")
+	suite.RequireCompleteFile(completeFile, "bobman ", "--awesome-times-infinity")
 	hashAfterReload := hashFile("cmd.bash")
-	testutil.ExpectCompleteFile(t, completeFile, "bobman ", "--awesome-times-infinity")
+	suite.RequireCompleteFile(completeFile, "bobman ", "--awesome-times-infinity")
 	hashAfterNoReload := hashFile("cmd.bash")
 
 	suite.NotEqual(hashBeforeReload, hashAfterReload)
 	suite.Equal(hashAfterNoReload, hashAfterReload)
 }
 
-func (suite *MainTestSuite) TestMainHandlesError() {
+func (suite *Suite) TestMainHandlesError() {
 	result := executeEntry(lib.Dedent(`
 		cfg cli_name=testcli
 		pos --nargs=*
@@ -507,7 +503,7 @@ func (suite *MainTestSuite) TestMainHandlesError() {
 	suite.Require().Equal("error: cannot have a positional come after a indeterminant narg positional\n", result.stderr)
 }
 
-func (suite *MainTestSuite) TestNargsErrorHandling() {
+func (suite *Suite) TestNargsErrorHandling() {
 	var errIndeterm = "cannot have a positional come after a indeterminant narg positional"
 
 	tests := []struct {

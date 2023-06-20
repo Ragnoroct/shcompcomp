@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -17,11 +18,13 @@ import (
 	"shcomp2/pkg/lib"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 )
 
-var mutex sync.Mutex
+//go:embed bash-bridge.sh
+var bashBridgeShell string
+var check = lib.Check
+
 var (
 	_, b, _, _ = runtime.Caller(0)
 	basepath   = filepath.Dir(b)
@@ -51,14 +54,58 @@ func (suite *BaseSuite) TearDownSuite() {
 	defer loggerCleanup()
 }
 
-func (suite *BaseSuite) RequireComplete(shell, cmdStr string, expected string) {
-	suite.T().Helper()
-	ExpectComplete(suite.T(), shell, cmdStr, expected)
-}
-
 func (suite *BaseSuite) RequireCompleteFile(file, cmdStr string, expected string) {
 	suite.T().Helper()
-	ExpectCompleteFile(suite.T(), file, cmdStr, expected)
+	shell := "source " + file
+	suite.RequireComplete(shell, cmdStr, expected)
+}
+
+func (suite *BaseSuite) RequireComplete(shell, cmdStr string, expected string) {
+	suite.T().Helper()
+	t := suite.T()
+	writeCompiled := func() string {
+		testname := suite.T().Name()
+		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
+		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
+		testname = strings.ToLower(testname)
+		testname += ".bash"
+		compilePath := path.Join(basepath, "../../compile/"+testname)
+		_ = os.WriteFile(compilePath, []byte(shell), 0644)
+		return compilePath
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			writeCompiled()
+			panic(r)
+		}
+	}()
+
+	completer := Completer(shell)
+	response := completer.Complete(cmdStr)
+	if response.error != nil {
+		require.FailNow(
+			suite.T(),
+			fmt.Sprintf(
+				"completion failed : %v\n"+
+					"stderr: %s\n"+
+					"stdout: %s", response.error, response.stderr, response.stdout,
+			))
+	}
+	actual := strings.TrimRight(response.stdout, "\n\t ")
+	if actual != expected {
+		compilePath := writeCompiled()
+		home, _ := os.UserHomeDir()
+		compilePath = strings.Replace(compilePath, home, "~", 1)
+
+		pathPrefix := os.Getenv("CUST_PROTOCOL_PREFIX")
+		if pathPrefix != "" {
+			compilePath = pathPrefix + "/" + strings.TrimLeft(compilePath, "/")
+		}
+
+		t.Helper()
+		require.Equalf(t, expected, actual, "completion does not match\n"+compilePath)
+	}
 }
 
 func (suite *BaseSuite) CreateFile(filename string, contents string, rest ...any) (filepath string) {
@@ -92,108 +139,6 @@ func (suite *BaseSuite) TempDir() (filepath string) {
 	return suite.tmpdir
 }
 
-type CompleterProcess struct {
-	stdin             *io.WriteCloser
-	chanOut           chan string
-	chanStderr        chan string
-	chanFlush         chan bool
-	chanTimeoutStderr chan string
-	chanTimeoutStdout chan string
-	mutex             sync.Mutex
-}
-type completerProcesses struct {
-	processMap map[string]*CompleterProcess
-}
-
-var processes completerProcesses
-
-func CompleterFile(shellFile string) *CompleterProcess {
-	if processes.processMap == nil {
-		processes.processMap = make(map[string]*CompleterProcess)
-	}
-	processKey := "file:" + shellFile
-	if process, ok := processes.processMap[processKey]; ok {
-		return process
-	} else {
-		chanFlush := make(chan bool)
-		chanOut, chanStderr, chanTimeoutStdout, chanTimeoutStderr, stdin := startProcess("", shellFile, chanFlush)
-		process = &CompleterProcess{
-			chanOut:           chanOut,
-			chanStderr:        chanStderr,
-			chanFlush:         chanFlush,
-			chanTimeoutStdout: chanTimeoutStdout,
-			chanTimeoutStderr: chanTimeoutStderr,
-			stdin:             stdin,
-			mutex:             sync.Mutex{},
-		}
-
-		processes.processMap[processKey] = process
-		return process
-	}
-}
-
-func Completer(completeShell string) *CompleterProcess {
-	if processes.processMap == nil {
-		processes.processMap = make(map[string]*CompleterProcess)
-	}
-	completeShell = lib.Dedent(completeShell)
-	if process, ok := processes.processMap[completeShell]; ok {
-		return process
-	} else {
-		chanFlush := make(chan bool)
-		chanOut, chanStderr, chanTimeoutStdout, chanTimeoutStderr, stdin := startProcess(completeShell, "", chanFlush)
-		process = &CompleterProcess{
-			chanOut:           chanOut,
-			chanStderr:        chanStderr,
-			chanFlush:         chanFlush,
-			chanTimeoutStdout: chanTimeoutStdout,
-			chanTimeoutStderr: chanTimeoutStderr,
-			stdin:             stdin,
-			mutex:             sync.Mutex{},
-		}
-
-		processes.processMap[completeShell] = process
-		return process
-	}
-}
-
-func (p *CompleterProcess) Complete(cmdStr string) string {
-	mutex.Lock()
-	defer mutex.Unlock()
-	var out string
-	var chanTimeout = make(chan bool)
-
-	go func() {
-		time.Sleep(time.Second)
-		chanTimeout <- true
-	}()
-
-	_, _ = io.WriteString(*p.stdin, cmdStr+"\n")
-	select {
-	case out = <-p.chanOut:
-	case <-chanTimeout:
-		p.chanFlush <- true
-		stdout := <-p.chanTimeoutStdout
-		stderr := <-p.chanTimeoutStderr
-		panic(fmt.Sprintf("error : timeout on waiting for complete\nstdout:\n%s\nstderr:\n%s", stdout, stderr))
-	}
-
-	outStderr := <-p.chanStderr
-	if outStderr != "" {
-		lines := strings.Split(outStderr, "\n")
-		nonPlus := false
-		for _, line := range lines {
-			if line != "" && !strings.HasPrefix(line, "+") {
-				nonPlus = true
-			}
-		}
-		if nonPlus {
-			panic("error : stderr : " + outStderr)
-		}
-	}
-	return strings.TrimRight(out, " \t\n")
-}
-
 func ParseOperations(operations string, values ...any) string {
 	var stdin bytes.Buffer
 	operations = fmt.Sprintf(operations, values...)
@@ -216,223 +161,167 @@ func ParseOperationsErr(operations string, values ...any) (string, error) {
 	return shell, nil
 }
 
-// todo: combine with ExpectComplete
-func ExpectCompleteFile(t *testing.T, shellFile string, cmdStr string, expected string) {
-	t.Helper()
-	completer := CompleterFile(shellFile)
-	actual := strings.TrimRight(completer.Complete(cmdStr), "\n \t")
-	if actual != expected {
-		testname := t.Name()
-		pwd, _ := os.Getwd()
-		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
-		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
-		testname = strings.ToLower(testname)
-		testname += ".bash"
-		compilePath := path.Join(pwd, "compile/"+testname)
-		content, _ := os.ReadFile(shellFile)
-		_ = os.WriteFile(compilePath, content, 0644)
-
-		t.Fatalf(
-			"\n"+
-				"compiled: %s\n"+
-				"     cmd: '%s'\n"+
-				"  actual: '%s'\n"+
-				"expected: '%s'\n",
-			testname,
-			cmdStr,
-			actual,
-			expected,
-		)
-	}
+type CompleterProcess struct {
+	mutex        sync.Mutex
+	chanRequest  chan string
+	chanResponse chan completeResponse
 }
 
-func ExpectComplete(t require.TestingT, shell string, cmdStr string, expected string) {
-	writeCompiled := func() string {
-		testname := "unknowntestname"
-		if n, ok := t.(interface {
-			Name() string
-		}); ok {
-			testname = n.Name()
-		}
-
-		testname = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(testname, "_")
-		testname = regexp.MustCompile(`_+`).ReplaceAllString(testname, "_")
-		testname = strings.ToLower(testname)
-		testname += ".bash"
-		compilePath := path.Join(basepath, "../../compile/"+testname)
-		_ = os.WriteFile(compilePath, []byte(shell), 0644)
-		return compilePath
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			writeCompiled()
-			panic(r)
-		}
-	}()
-
-	completer := Completer(shell)
-	actual := completer.Complete(cmdStr)
-	if err := recover(); err != nil {
-		actual = "err: timeout"
-	}
-	actual = strings.TrimRight(actual, "\n \t")
-	if actual != expected {
-		compilePath := writeCompiled()
-		home, _ := os.UserHomeDir()
-		compilePath = strings.Replace(compilePath, home, "~", 1)
-
-		pathPrefix := os.Getenv("CUST_PROTOCOL_PREFIX")
-		if pathPrefix != "" {
-			compilePath = pathPrefix + "/" + strings.TrimLeft(compilePath, "/")
-		}
-
-		if h, ok := t.(interface{ Helper() }); ok {
-			h.Helper()
-		}
-		require.Equalf(t, expected, actual, "completion does not match\n"+compilePath)
-	}
+type completeResponse struct {
+	stdout string
+	stderr string
+	error  error
 }
 
-type StdoutMock struct {
-	pipeWriter *os.File
-	pipeReader *os.File
+var processes map[string]*CompleterProcess
+
+func (p *CompleterProcess) Complete(cmdStr string) completeResponse {
+	p.chanRequest <- cmdStr
+	response := <-p.chanResponse
+	return response
 }
 
-func (stdout StdoutMock) GetString() string {
-	_ = stdout.pipeWriter.Close()
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, stdout.pipeReader)
-	_ = stdout.pipeReader.Close()
-	return buf.String()
-}
+func Completer(shell string) *CompleterProcess {
+	if processes == nil {
+		processes = make(map[string]*CompleterProcess)
+	}
+	shell = lib.Dedent(shell)
 
-func startProcess(shellCode string, filename string, flushOutput chan bool) (chan string, chan string, chan string, chan string, *io.WriteCloser) {
-	var err error
-	var bashOutBuffer []byte
-	var stderrBuffer []byte
-	var chanOut = make(chan string)
-	var chanStderr = make(chan string)
-	var chanTimeoutStdout = make(chan string)
-	var chanTimeoutStderr = make(chan string)
-
-	var shellCodePrefix string
-	if shellCode != "" {
-		// inline completion code
-		shellCodePrefix = lib.Dedent(shellCode)
+	if process, ok := processes[shell]; ok {
+		return process
 	} else {
-		// external completion code (for testing auto reload stuff)
-		shellCodePrefix = lib.Dedent(fmt.Sprintf(`
-			source "%s"
-		`, filename))
-	}
+		var err error
+		var stdoutBuffer []byte
+		var stderrBuffer []byte
+		var mutex = sync.Mutex{}
+		var chanFlush = make(chan bool)
+		var chanResponse = make(chan completeResponse)
 
-	cwd, _ := os.Getwd()
-	buildPath := path.Join(cwd, "build")
-
-	shellCode = shellCodePrefix + "\n" + lib.Dedent(`
-		export PATH="$PATH:`+buildPath+`"
-		complete_cmd_str() {
-			local input_line="$1"
-			declare -g complete_cmd_str_result
-			
-			# fixes: "compopt: not currently executing completion function"
-			# allows compopt calls without giving the cmdname arg
-			# compopt +o nospace instead of compopt +o nospace mycommand
-			compopt () {
-				builtin compopt "$@" "$__shcomp2test_compopt_current_cmd"
-			}
-			
-			IFS=', ' read -r -a comp_words <<<"$input_line"
-			if [[ "$input_line" =~ " "$ ]]; then comp_words+=(""); fi
-			
-			cmd_name="${comp_words[0]}"
-			COMP_LINE="$input_line"
-			COMP_WORDS=("${comp_words[@]}")
-			COMP_CWORD="$((${#comp_words[@]} - 1))"
-			COMP_POINT="$(("${#input_line}" + 0))"
-
-			complete_func="$(complete -p "$cmd_name" | awk '{print $(NF-1)}')"
-			__shcomp2test_compopt_current_cmd="$cmd_name"
-			"$complete_func" &>/tmp/bashcompletils.out
-			__shcomp2test_compopt_current_cmd=""
-			unset compopt
-
-			printf '%s\n' "${COMPREPLY[*]}"
+		process = &CompleterProcess{
+			chanRequest:  make(chan string),
+			chanResponse: make(chan completeResponse),
 		}
 
-		if [ -f /usr/share/bash-completion/bash_completion ]; then
-			source /usr/share/bash-completion/bash_completion
-		elif [ -f /etc/bash_completion ]; then
-			source /etc/bash_completion
-		fi
+		cwd, _ := os.Getwd()
+		buildBinaryPath := path.Join(cwd, "build")
 
-		while IFS= read -r line; do
-			complete_cmd_str "$line"
-			printf '\0'
-		done
-	`)
+		envCopy := os.Environ()
+		for _, keyVal := range envCopy {
+			split := strings.Split(keyVal, "=")
+			if split[0] == "PATH" {
+				split[0] = buildBinaryPath + ":" + split[0]
+			}
+		}
 
-	proc := exec.Command("bash", "-c", shellCode)
-	stdin, err := proc.StdinPipe()
-	check(err)
-	stdout, err := proc.StdoutPipe()
-	check(err)
-	stderr, err := proc.StderrPipe()
-	check(err)
-	err = proc.Start()
-	check(err)
+		bashCommandStr := shell + "\n" + bashBridgeShell
+		proc := exec.Command("bash", "-c", bashCommandStr)
+		proc.Env = envCopy
+		stdin, err := proc.StdinPipe()
+		check(err)
+		stdout, err := proc.StdoutPipe()
+		check(err)
+		stderr, err := proc.StderrPipe()
+		check(err)
+		err = proc.Start()
+		check(err)
 
-	go func() {
-		var err error
-		var n int
-		buff := make([]byte, 256)
-		for err == nil {
-			n, err = stdout.Read(buff)
-			for i := 0; i < n; i++ {
-				if buff[i] == '\x00' {
-					out := string(bashOutBuffer)
-					outstderr := string(stderrBuffer)
-					bashOutBuffer = []byte{}
-					stderrBuffer = []byte{}
-					chanOut <- out
-					chanStderr <- outstderr
-				} else {
-					bashOutBuffer = append(bashOutBuffer, buff[i])
+		// process requests
+		go func() {
+			for {
+				cmdStr := <-process.chanRequest
+				process.chanResponse <- func() completeResponse {
+					mutex.Lock()
+					defer mutex.Unlock()
+
+					var chanTimeout = make(chan bool)
+					var response completeResponse
+
+					go func() {
+						time.Sleep(time.Second)
+						chanTimeout <- true
+					}()
+
+					_, _ = io.WriteString(stdin, cmdStr+"\n")
+
+					select {
+					case response = <-chanResponse:
+					case <-chanTimeout:
+						chanFlush <- true
+						response = <-chanResponse
+						response.error = fmt.Errorf("timeout waiting for completion call")
+					}
+
+					if response.stderr != "" && response.error == nil {
+						lines := strings.Split(response.stderr, "\n")
+						nonSetXDebug := false
+						for _, line := range lines {
+							if line != "" && !strings.HasPrefix(line, "+") {
+								nonSetXDebug = true
+							}
+						}
+						if nonSetXDebug {
+							response.error = fmt.Errorf("unexpected stderr in completion call")
+						}
+					}
+
+					return response
+				}()
+			}
+		}()
+
+		// read stdout
+		go func() {
+			var err error
+			var n int
+			buff := make([]byte, 256)
+			for err == nil {
+				n, err = stdout.Read(buff)
+				for i := 0; i < n; i++ {
+					if buff[i] == '\x00' {
+						stdoutCopy := string(stdoutBuffer)
+						stderrCopy := string(stderrBuffer)
+						stdoutBuffer = []byte{}
+						stderrBuffer = []byte{}
+						chanResponse <- completeResponse{
+							stdout: stdoutCopy,
+							stderr: stderrCopy,
+						}
+					} else {
+						stdoutBuffer = append(stdoutBuffer, buff[i])
+					}
 				}
 			}
-		}
-	}()
+		}()
 
-	go func() {
-		for {
-			<-flushOutput
-			out := string(bashOutBuffer)
-			outstderr := string(stderrBuffer)
-			bashOutBuffer = []byte{}
-			stderrBuffer = []byte{}
-			chanTimeoutStdout <- out
-			chanTimeoutStderr <- outstderr
-		}
-	}()
-
-	go func() {
-		var err error
-		var n int
-		buff := make([]byte, 256)
-		for err == nil {
-			n, err = stderr.Read(buff)
-			for i := 0; i < n; i++ {
-				stderrBuffer = append(stderrBuffer, buff[i])
+		// read stderr
+		go func() {
+			var err error
+			var n int
+			buff := make([]byte, 256)
+			for err == nil {
+				n, err = stderr.Read(buff)
+				for i := 0; i < n; i++ {
+					stderrBuffer = append(stderrBuffer, buff[i])
+				}
 			}
-		}
-	}()
+		}()
 
-	return chanOut, chanStderr, chanTimeoutStdout, chanTimeoutStderr, &stdin
-}
+		// check for flush (handy for timeouts due to errors)
+		go func() {
+			for {
+				<-chanFlush
+				stdoutCopy := string(stdoutBuffer)
+				stderrCopy := string(stderrBuffer)
+				stdoutBuffer = []byte{}
+				stderrBuffer = []byte{}
+				chanResponse <- completeResponse{
+					stdout: stdoutCopy,
+					stderr: stderrCopy,
+				}
+			}
+		}()
 
-func check(err error) {
-	if err != nil {
-		panic(err)
+		processes[shell] = process
+		return process
 	}
 }

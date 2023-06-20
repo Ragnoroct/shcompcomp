@@ -4,6 +4,7 @@ trap "exit_cleanup" SIGINT SIGTERM EXIT
 
 script_name=$(basename -- "${BASH_SOURCE[0]}")
 script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
+compile_dir=$(realpath "$script_dir/../compile")
 proj_dir=$(realpath "$script_dir/..")
 input="$1"
 session_name="shcompcomp-playground"
@@ -38,7 +39,7 @@ inotify_action () {
   prompt="${prompt##*"$ "}"
   prompt="${prompt%%^C}"
   shcomp2 - < "$proj_dir/.tmuxinfile"
-  sendstrings "C-c; source /tmp/tmuxfile.bash; clear" Enter
+  sendstrings "C-c; source $compile_dir/tmuxfile.bash; clear" Enter
   if [[ -n "$prompt" ]]; then
     sendstrings "$prompt"
   else

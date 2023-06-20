@@ -171,6 +171,9 @@ func (parser CliParser) OptionalsData() map[string]string {
 			}
 			assoc["__narg_count__,"+optional.name] = "0"
 		}
+		if optional.NArgs.NoSpace {
+			assoc["__narg_nospace__,"+optional.name] = "1"
+		}
 		name := optional.name
 		if len(optional.alternatives) > 0 {
 			// todo: algorithm complexity for alternatives is currently O(n*n)
@@ -215,10 +218,11 @@ func (parser CliParser) Subparsers() []string {
 // * => {0,inf}
 // 3 => {3,3}
 type CliNargs struct {
-	Min    float64
-	Max    float64
-	Unique bool
-	IsSet  bool
+	Min     float64
+	Max     float64
+	Unique  bool
+	IsSet   bool
+	NoSpace bool
 }
 
 type CliPositional struct {
@@ -616,6 +620,9 @@ func ParseOperations(operationsStr string) (Cli, error) {
 						return Cli{}, err
 					}
 					opt.NArgs = nargs
+				}
+				if _, ok := tryOption(word, "--nargs-nospace"); ok {
+					opt.NArgs.NoSpace = true
 				}
 			}
 

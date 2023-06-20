@@ -46,6 +46,8 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
   local cword_index previous_word words current_word
   _get_comp_words_by_ref -n = -n @ -n : -w words -i cword_index -p previous_word -c current_word
 
+  log "complete: '$COMP_LINE'"
+
   # default add space after completion
   compopt +o nospace
 
@@ -79,6 +81,7 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
             option_data["__narg_count__,$word"]=$((option_data["__narg_count__,$word"]+1))
             if [[ "${option_data["__narg_count__,$word"]}" -lt "${option_data["__narg_max__,$word"]}" ]]; then
               reached_max=0
+              option_data[__narg_maxed__,$word]=1
             fi
           fi
         fi
@@ -86,15 +89,14 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
         local limit=99
         local idx=0
         local alt
-        local -n options_name_map_loop="_option_${current_parser_clean}_name_map"
         while true; do
           alt="${option_data["__alternatives__,$word,$idx"]}"
           if [[ $idx -ge $limit || -z "$alt" ]]; then break; fi
           idx=$((idx+1))
-          options_name_map_loop["$alt"]=0
+          option_map["$alt"]=0
         done
         option_data["__alternatives__,__used__,$word"]=1
-        if ((i<cword_index)); then
+        if ((i<=cword_index)); then
           if [[ "$reached_max" == 1 ]]; then
             used_options["$word"]=1
           fi
@@ -120,17 +122,16 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
             local limit=99
             local idx=0
             local alt
-            local -n options_name_map="_option_${current_parser_clean}_name_map"
             while true; do
               alt="${option_data["__alternatives__,$opt,$idx"]}"
               if [[ $idx -ge $limit || -z "$alt" ]]; then break; fi
               idx=$((idx+1))
-              options_name_map["$alt"]=0
+              option_map["$alt"]=0
             done
             option_data["__alternatives__,__used__,$opt"]=1
             if [[ "$reached_max" == 1 ]]; then
               used_options["$opt"]=1
-              options_name_map["$opt"]=0
+              option_map["$opt"]=0
             fi
           fi
         done <<< "$word"
@@ -170,6 +171,7 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     parser="$current_parser_clean"
   fi
 
+  local choices_all=()
   local -n option_complete_data="_option_${parser}_data"
   if [[ -v option_complete_data[@] && -v "option_complete_data[__type__,$previous_word]" ]]; then
     # --option values
@@ -191,8 +193,6 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     esac
     mapfile -t COMPREPLY < <(compgen -W "${option_choices}" -- "$current_word")
   else
-    local choices_all=()
-
     # positionals
     local -n positional_complete_type="_positional_${parser}_${carg_index}_type"
     case "$positional_complete_type" in
@@ -223,38 +223,62 @@ __shcomp2_v2_autocomplete_{{.Cli.CliNameClean}} () {
     local -n options_name_seq="_option_${parser}_names"
     local -n options_name_dat="_option_${parser}_data"
 
-    {{ if .Cli.Config.MergeSingleOpt }}
-    local shortopt_merged shortopt_merged_appended=0
-    if [[ $current_word =~ -[^-].* ]]; then
-      if [[ ${options_name_map[$current_word]} == 1 && ${#current_word} -gt 2 ]]; then
-        # todo: add test case for this
-        :
-      elif [[ -z "${options_name_dat[__type__,$current_word]}" ]]; then
-        # todo: looping over options seq twice
-        shortopt_merged="$current_word"
-        for name in "${options_name_seq[@]}"; do
+    # options
+    for name in "${options_name_seq[@]}"; do
+      {{ if .Cli.Config.MergeSingleOpt }}
+      local shortopt_merged shortopt_merged_appended=0 shortopt_left
+      if [[ $current_word =~ -[^-].* ]]; then
+        if [[ ${options_name_map[$current_word]} == 1 && ${#current_word} -gt 2 ]]; then
+          # -longopt
+          # todo: testcase for current word is -longopt or -lo
+          :
+        elif [[ -z "${options_name_dat[__type__,$current_word]}" ]]; then
+          # for: -a -b -c -d
+          # -a   => -ab -ac -ad
+          # -ab  => -abc -abd
+          # -abc => -abcd
+          # todo: testcase for -abf where f takes a required value
+          # todo: testcase for -abf where f takes an optional value
+          # todo: looping over options seq twice
+          shortopt_merged="$current_word"
           if [[ "${options_name_map[$name]}" == 1 && "${used_options[$name]}" != 1 && ${#name} == 2 ]]; then
             shortopt_merged+="${name##-}"
             shortopt_merged_appended=1
             options_name_map["$name"]=0
           fi
-        done
+          shortopt_left="${current_word:0-1}"
+        fi
       fi
-    fi
-    if [[ -n "$shortopt_merged" ]]; then
-      choices_all+=("$current_word")
-      if [[ $shortopt_merged_appended == 1 ]]; then
-        choices_all+=("$shortopt_merged")
+      if [[ -n "$shortopt_merged" ]]; then
+        if [[ $shortopt_merged_appended == 1 ]]; then
+          choices_all+=("$shortopt_merged")
+        fi
+      else
+        if [[ "${options_name_map[$name]}" == 1 && "${used_options[$name]}" != 1 ]]; then
+          choices_all+=("$name")
+        fi
       fi
-    fi
-    {{ end }}
 
-    # options
-    for name in "${options_name_seq[@]}"; do
+      log "num2: ${#choices_all[@]}"
+      log "choices_all2: ${choices_all[*]}"
+      if [[ ${#choices_all[@]} == 1 && ${options_name_dat[__narg_nospace__,$name]} == 1 ]]; then
+        log "NO SPACE ${options_name_dat[__narg_maxed__,$name]}"
+        log "count: ${options_name_dat["__narg_count__,$name"]}"
+        log "max  : ${options_name_dat["__narg_max__,$name"]}"
+{{/*        compopt +o nospace*/}}
+      elif [[ ${#choices_all[@]} == 1 ]]; then
+        :
+{{/*        compopt -o nospace*/}}
+      fi
+      {{ else }}
+      {{/* no merging of short opts*/}}
       if [[ "${options_name_map[$name]}" == 1 && "${used_options[$name]}" != 1 ]]; then
         choices_all+=("$name")
       fi
+      {{ end }}
     done
+
+    log "choices_all: ${choices_all[*]}"
 
     mapfile -t COMPREPLY < <(compgen -W "${choices_all[*]}" -- "$current_word")
   fi
